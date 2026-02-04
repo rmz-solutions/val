@@ -98,7 +98,7 @@
       background: #e5e7eb;
       color: #111827;
 
-      /* smoother motion for new logic */
+      /* smoother motion for the new logic */
       transition: left .08s linear, top .08s linear, transform .12s ease;
     }
 
@@ -252,15 +252,17 @@
       yesBtn.style.transform = `translateY(-50%) scale(${yesScale})`;
     }
 
-    /* ---------- NO BUTTON RUNS AWAY (SMART VERSION) ---------- */
+    /* ---------- NO BUTTON RUNS AWAY (UN-CORNERABLE + WRAP) ---------- */
     function clamp(n, min, max) {
       return Math.max(min, Math.min(max, n));
     }
 
-    const TRIGGER_RADIUS = 190;
-    const MIN_SEPARATION = 170;
-    const EDGE_PADDING = 10;
-    const MAX_TRIES = 12;
+    // Tune these (bigger = harder to catch)
+    const TRIGGER_RADIUS = 220;      // start running earlier
+    const MIN_SEPARATION = 200;      // must land far from pointer
+    const EDGE_PADDING = 14;         // hard clamp boundary
+    const SAFE_PADDING = 52;         // "no-go" band near edges (prevents pinning/cornering)
+    const MAX_TRIES = 22;
 
     function setNoPosition(left, top) {
       noBtn.style.left = left + "px";
@@ -276,16 +278,65 @@
       return Math.hypot(cx - px, cy - py);
     }
 
-    function moveNoSmart(px, py) {
+    function isNearEdge(left, top, maxLeft, maxTop) {
+      return (
+        left < SAFE_PADDING ||
+        top < SAFE_PADDING ||
+        left > (maxLeft - SAFE_PADDING) ||
+        top > (maxTop - SAFE_PADDING)
+      );
+    }
+
+    function randomSafeSpot(maxLeft, maxTop, px, py) {
+      const spanX = Math.max(1, maxLeft - 2 * SAFE_PADDING);
+      const spanY = Math.max(1, maxTop  - 2 * SAFE_PADDING);
+
+      for (let i = 0; i < 50; i++) {
+        const left = SAFE_PADDING + Math.random() * spanX;
+        const top  = SAFE_PADDING + Math.random() * spanY;
+        if (distanceToPointer(left, top, px, py) >= MIN_SEPARATION) return { left, top };
+      }
+      return { left: maxLeft * 0.5, top: maxTop * 0.5 };
+    }
+
+    // WRAP: mirror to opposite side (plus jitter), then enforce safe interior rules
+    function wrapOpposite(curLeft, curTop, maxLeft, maxTop, px, py) {
+      const b = noBtn.getBoundingClientRect();
+      const jitterX = (Math.random() * 2 - 1) * Math.min(80, maxLeft * 0.25);
+      const jitterY = (Math.random() * 2 - 1) * Math.min(50, maxTop * 0.35);
+
+      let left = (maxLeft - curLeft) + jitterX;
+      let top  = (maxTop - curTop) + jitterY;
+
+      left = clamp(left, EDGE_PADDING, maxLeft - EDGE_PADDING);
+      top  = clamp(top,  EDGE_PADDING, maxTop  - EDGE_PADDING);
+
+      // If wrap landed near edges or too close to pointer, pick a random safe spot.
+      if (isNearEdge(left, top, maxLeft, maxTop) || distanceToPointer(left, top, px, py) < MIN_SEPARATION) {
+        return randomSafeSpot(maxLeft, maxTop, px, py);
+      }
+      return { left, top };
+    }
+
+    function moveNoSmart(px, py, forceWrap = false) {
       const z = zone.getBoundingClientRect();
       const b = noBtn.getBoundingClientRect();
-
-      const curLeft = b.left - z.left;
-      const curTop  = b.top - z.top;
 
       const maxLeft = z.width - b.width;
       const maxTop  = z.height - b.height;
 
+      const curLeft = b.left - z.left;
+      const curTop  = b.top - z.top;
+
+      // If getting cornered OR we explicitly want to wrap, wrap/teleport immediately.
+      if (forceWrap || isNearEdge(curLeft, curTop, maxLeft, maxTop)) {
+        const spot = wrapOpposite(curLeft, curTop, maxLeft, maxTop, px, py);
+        setNoPosition(spot.left, spot.top);
+        growYes();
+        return;
+      }
+
+      // Otherwise: run away, but ONLY accept interior placements (never edge/cornerable)
       for (let i = 0; i < MAX_TRIES; i++) {
         const btnCx = b.left + b.width / 2;
         const btnCy = b.top + b.height / 2;
@@ -295,20 +346,25 @@
         const mag = Math.hypot(dx, dy) || 1;
         dx /= mag; dy /= mag;
 
-        const jitter = (Math.random() * 140 - 70) * (Math.PI / 180);
+        // add randomness so it isn't predictable
+        const jitter = (Math.random() * 170 - 85) * (Math.PI / 180);
         const cos = Math.cos(jitter), sin = Math.sin(jitter);
         const jx = dx * cos - dy * sin;
         const jy = dx * sin + dy * cos;
 
-        const base = 180 + i * 8;
-        const dist = base + Math.random() * 80;
+        const dist = 230 + Math.random() * 170 + i * 10;
 
         let newLeft = curLeft + jx * dist;
         let newTop  = curTop + jy * dist;
 
+        // hard clamp
         newLeft = clamp(newLeft, EDGE_PADDING, maxLeft - EDGE_PADDING);
         newTop  = clamp(newTop,  EDGE_PADDING, maxTop  - EDGE_PADDING);
 
+        // reject edge/cornerable placements
+        if (isNearEdge(newLeft, newTop, maxLeft, maxTop)) continue;
+
+        // reject too close to pointer
         if (distanceToPointer(newLeft, newTop, px, py) < MIN_SEPARATION) continue;
 
         setNoPosition(newLeft, newTop);
@@ -316,12 +372,13 @@
         return;
       }
 
-      const fallbackLeft = clamp(Math.random() * maxLeft, EDGE_PADDING, maxLeft - EDGE_PADDING);
-      const fallbackTop  = clamp(Math.random() * maxTop,  EDGE_PADDING, maxTop  - EDGE_PADDING);
-      setNoPosition(fallbackLeft, fallbackTop);
+      // If we couldn't find a good directional spot, teleport to safe interior
+      const spot = randomSafeSpot(maxLeft, maxTop, px, py);
+      setNoPosition(spot.left, spot.top);
       growYes();
     }
 
+    // Start running earlier
     zone.addEventListener("pointermove", (e) => {
       const b = noBtn.getBoundingClientRect();
       const d = Math.hypot(
@@ -331,13 +388,21 @@
       if (d < TRIGGER_RADIUS) moveNoSmart(e.clientX, e.clientY);
     });
 
-    noBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      moveNoSmart(e.clientX, e.clientY);
+    // Recommendation: jump the moment the pointer enters the button (prevents fast “snipes”)
+    noBtn.addEventListener("pointerenter", (e) => {
+      moveNoSmart(e.clientX, e.clientY, true); // force wrap
     });
 
+    // Also jump on press/tap (mobile)
+    noBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      moveNoSmart(e.clientX, e.clientY, true); // force wrap
+    });
+
+    // Prevent click
     noBtn.addEventListener("click", (e) => e.preventDefault());
 
+    /* ---------- YES CLICK ---------- */
     yesBtn.addEventListener("click", () => {
       zone.style.display = "none";
       hint.style.display = "none";
@@ -348,5 +413,3 @@
   </script>
 </body>
 </html>
-
-
