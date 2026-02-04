@@ -97,6 +97,9 @@
       left: 62%;
       background: #e5e7eb;
       color: #111827;
+
+      /* smoother motion for new logic */
+      transition: left .08s linear, top .08s linear, transform .12s ease;
     }
 
     .hint {
@@ -178,7 +181,6 @@
       <button id="noBtn">No</button>
     </section>
 
-    <!-- HINT -->
     <div class="hint" id="hint">“No” seems a bit shy :)</div>
 
     <section class="result" id="result">
@@ -250,49 +252,95 @@
       yesBtn.style.transform = `translateY(-50%) scale(${yesScale})`;
     }
 
-    /* ---------- NO BUTTON RUNS AWAY ---------- */
+    /* ---------- NO BUTTON RUNS AWAY (SMART VERSION) ---------- */
     function clamp(n, min, max) {
       return Math.max(min, Math.min(max, n));
     }
 
-    function moveNo(px, py) {
+    const TRIGGER_RADIUS = 190;
+    const MIN_SEPARATION = 170;
+    const EDGE_PADDING = 10;
+    const MAX_TRIES = 12;
+
+    function setNoPosition(left, top) {
+      noBtn.style.left = left + "px";
+      noBtn.style.top = top + "px";
+      noBtn.style.transform = "none";
+    }
+
+    function distanceToPointer(left, top, px, py) {
+      const z = zone.getBoundingClientRect();
+      const b = noBtn.getBoundingClientRect();
+      const cx = z.left + left + b.width / 2;
+      const cy = z.top + top + b.height / 2;
+      return Math.hypot(cx - px, cy - py);
+    }
+
+    function moveNoSmart(px, py) {
       const z = zone.getBoundingClientRect();
       const b = noBtn.getBoundingClientRect();
 
-      let dx = (b.left + b.width / 2) - px;
-      let dy = (b.top + b.height / 2) - py;
-      let mag = Math.hypot(dx, dy) || 1;
-      dx /= mag;
-      dy /= mag;
+      const curLeft = b.left - z.left;
+      const curTop  = b.top - z.top;
 
-      let newLeft = (b.left - z.left) + dx * 150;
-      let newTop  = (b.top - z.top) + dy * 150;
+      const maxLeft = z.width - b.width;
+      const maxTop  = z.height - b.height;
 
-      newLeft = clamp(newLeft, 0, z.width - b.width);
-      newTop  = clamp(newTop, 0, z.height - b.height);
+      for (let i = 0; i < MAX_TRIES; i++) {
+        const btnCx = b.left + b.width / 2;
+        const btnCy = b.top + b.height / 2;
 
-      noBtn.style.left = newLeft + "px";
-      noBtn.style.top = newTop + "px";
-      noBtn.style.transform = "none";
+        let dx = btnCx - px;
+        let dy = btnCy - py;
+        const mag = Math.hypot(dx, dy) || 1;
+        dx /= mag; dy /= mag;
 
+        const jitter = (Math.random() * 140 - 70) * (Math.PI / 180);
+        const cos = Math.cos(jitter), sin = Math.sin(jitter);
+        const jx = dx * cos - dy * sin;
+        const jy = dx * sin + dy * cos;
+
+        const base = 180 + i * 8;
+        const dist = base + Math.random() * 80;
+
+        let newLeft = curLeft + jx * dist;
+        let newTop  = curTop + jy * dist;
+
+        newLeft = clamp(newLeft, EDGE_PADDING, maxLeft - EDGE_PADDING);
+        newTop  = clamp(newTop,  EDGE_PADDING, maxTop  - EDGE_PADDING);
+
+        if (distanceToPointer(newLeft, newTop, px, py) < MIN_SEPARATION) continue;
+
+        setNoPosition(newLeft, newTop);
+        growYes();
+        return;
+      }
+
+      const fallbackLeft = clamp(Math.random() * maxLeft, EDGE_PADDING, maxLeft - EDGE_PADDING);
+      const fallbackTop  = clamp(Math.random() * maxTop,  EDGE_PADDING, maxTop  - EDGE_PADDING);
+      setNoPosition(fallbackLeft, fallbackTop);
       growYes();
     }
 
-    zone.addEventListener("pointermove", e => {
+    zone.addEventListener("pointermove", (e) => {
       const b = noBtn.getBoundingClientRect();
       const d = Math.hypot(
         (b.left + b.width / 2) - e.clientX,
         (b.top + b.height / 2) - e.clientY
       );
-      if (d < 140) moveNo(e.clientX, e.clientY);
+      if (d < TRIGGER_RADIUS) moveNoSmart(e.clientX, e.clientY);
     });
 
-    noBtn.addEventListener("click", e => e.preventDefault());
+    noBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      moveNoSmart(e.clientX, e.clientY);
+    });
 
-    /* ---------- YES CLICK ---------- */
+    noBtn.addEventListener("click", (e) => e.preventDefault());
+
     yesBtn.addEventListener("click", () => {
       zone.style.display = "none";
-      hint.style.display = "none";     // HIDE THE HINT
+      hint.style.display = "none";
       result.style.display = "block";
       resizeConfettiCanvas();
       fullScreenConfetti();
