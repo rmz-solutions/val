@@ -49,7 +49,6 @@
       line-height:1.1;
     }
 
-    /* This is the "white space" where No can roam */
     #playArea{
       position:relative;
       width:min(560px, 96%);
@@ -84,19 +83,17 @@
     }
     #yesBtn:hover{background:var(--yesHover);}
 
-    /* NO uses GPU transform; we animate via JS by updating --nx/--ny */
+    /* IMPORTANT: start in-place; no movement until pointer approaches */
     #noBtn{
-      left:0; top:0;
-      transform: translate3d(var(--nx, 0px), var(--ny, 0px), 0) translate(-50%, -50%);
+      left:72%;
+      top:50%;
+      transform:translate(-50%, -50%);
       background:#e5e7eb;
       color:#111827;
 
-      /* mouse can never actually hover/click it */
-      pointer-events:none;
-
-      /* transitions get enabled after first placement */
-      transition: none;
-      will-change: transform;
+      pointer-events:none;      /* can't hover/click */
+      will-change:transform;
+      transition:transform 85ms cubic-bezier(.12,.95,.2,1);
     }
 
     .hint{margin-top:2px; font-size:13px; opacity:.7;}
@@ -115,6 +112,7 @@
       .card{padding:22px 16px; border-radius:18px;}
       #playArea{height:300px; width:100%;}
       #yesBtn{left:26%;}
+      #noBtn{left:74%;}
     }
   </style>
 </head>
@@ -184,54 +182,33 @@
       }), 250);
     }
 
-    /* ---------- NO movement: smooth dash to random safe target ---------- */
-
+    /* ---------- NO movement: only on proximity ---------- */
     const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-    function areaRect(){
-      return playArea.getBoundingClientRect();
-    }
-
-    // Current NO center in page coords
-    function noRect(){
-      // This returns a real rect even though pointer-events is none
-      return noBtn.getBoundingClientRect();
-    }
+    function aRect(){ return playArea.getBoundingClientRect(); }
+    function bRect(){ return noBtn.getBoundingClientRect(); }
 
     function tuning(){
-      const a = areaRect();
-      const b = noRect();
-
+      const a = aRect();
       const w = Math.max(1, a.width);
       const h = Math.max(1, a.height);
 
-      // Safe padding as fraction of area (prevents pinning/cornering)
-      const padX = clamp(w * 0.10, 10, 52);
-      const padY = clamp(h * 0.10, 10, 52);
+      const padX = clamp(w * 0.10, 10, 56);
+      const padY = clamp(h * 0.10, 10, 56);
 
-      // Landing distance from pointer (bigger = more impossible)
-      const minSep = clamp(Math.min(w, h) * 0.62, 160, 420);
+      // how far away it must land from pointer
+      const minSep = clamp(Math.min(w, h) * 0.65, 180, 520);
 
-      // How early it runs away (rect-inflation trigger)
-      const preempt = clamp(Math.min(w, h) * 0.22, 60, 140);
+      // force-field around button rect; pointer entering this triggers movement
+      const preempt = clamp(Math.min(w, h) * 0.28, 90, 190);
 
-      // Dash duration (ms): smooth but fast
-      const dashMs = 120;
-
-      return { a, b, padX, padY, minSep, preempt, dashMs };
+      return { a, padX, padY, minSep, preempt };
     }
 
-    // Set position in playArea-local coords (center coords)
-    function setNoLocal(cx, cy){
-      noBtn.style.setProperty("--nx", cx + "px");
-      noBtn.style.setProperty("--ny", cy + "px");
-    }
+    function pickTarget(px, py, forceDeep=false){
+      const { a, padX, padY, minSep } = tuning();
+      const b = bRect();
 
-    // Pick random safe center location inside playArea
-    function pickSafeTarget(px, py, forceDeep=false){
-      const { a, b, padX, padY, minSep } = tuning();
-
-      // center bounds in local coords (because we place by center)
       const minCX = padX + b.width/2;
       const maxCX = a.width - padX - b.width/2;
       const minCY = padY + b.height/2;
@@ -239,140 +216,112 @@
 
       const spanX = Math.max(1, maxCX - minCX);
       const spanY = Math.max(1, maxCY - minCY);
-
-      // if space is too small, just center
       if (spanX < 2 || spanY < 2) return { cx: a.width/2, cy: a.height/2 };
 
-      const deepBoost = forceDeep ? 26 : 0;
-      const minCX2 = clamp(minCX + deepBoost, minCX, maxCX);
-      const maxCX2 = clamp(maxCX - deepBoost, minCX2, maxCX);
-      const minCY2 = clamp(minCY + deepBoost, minCY, maxCY);
-      const maxCY2 = clamp(maxCY - deepBoost, minCY2, maxCY);
+      // Bias away from pointer (opposite-ish)
+      const localX = px - a.left;
+      const localY = py - a.top;
+      const awayX = localX < a.width/2 ? (a.width*0.72) : (a.width*0.28);
+      const awayY = localY < a.height/2 ? (a.height*0.70) : (a.height*0.30);
 
-      const spanX2 = Math.max(1, maxCX2 - minCX2);
-      const spanY2 = Math.max(1, maxCY2 - minCY2);
+      const deep = forceDeep ? 22 : 0;
 
       for (let i=0; i<260; i++){
-        const cx = minCX2 + Math.random() * spanX2;
-        const cy = minCY2 + Math.random() * spanY2;
+        // Mix: mostly around away target, sometimes totally random
+        const r = Math.random();
+        const cx = r < 0.78
+          ? clamp(awayX + (Math.random()*2-1) * (a.width*0.22), minCX+deep, maxCX-deep)
+          : (minCX + Math.random()*spanX);
+        const cy = r < 0.78
+          ? clamp(awayY + (Math.random()*2-1) * (a.height*0.25), minCY+deep, maxCY-deep)
+          : (minCY + Math.random()*spanY);
 
         const worldX = a.left + cx;
         const worldY = a.top  + cy;
-
         if (Math.hypot(worldX - px, worldY - py) >= minSep) return { cx, cy };
       }
 
-      return { cx: (minCX2+maxCX2)/2, cy: (minCY2+maxCY2)/2 };
+      return { cx: (minCX+maxCX)/2, cy: (minCY+maxCY)/2 };
     }
 
-    // Smooth “dash” to new target (no teleport pop)
-    let animating = false;
-    let lastMoveAt = 0;
-
-    function dashToTarget(px, py, forceDeep=false){
-      const { dashMs } = tuning();
-
-      // throttle so it doesn't freak out multiple times per single move event
-      const now = performance.now();
-      if (animating && now - lastMoveAt < 25) return;
-
-      const a = areaRect();
-      // current local center from CSS vars if present, else from rect
-      const cur = noRect();
-      const curLocalX = (cur.left + cur.width/2) - a.left;
-      const curLocalY = (cur.top  + cur.height/2) - a.top;
-
-      const tgt = pickSafeTarget(px, py, forceDeep);
-
-      animating = true;
-      lastMoveAt = now;
-
-      // enable transition just for the dash
-      noBtn.style.transition = `transform ${dashMs}ms cubic-bezier(.15,.9,.2,1)`;
-      setNoLocal(tgt.cx, tgt.cy);
-
-      // after dash, keep transition fast for subsequent moves
-      window.setTimeout(() => {
-        animating = false;
-        noBtn.style.transition = "transform 90ms cubic-bezier(.15,.9,.2,1)";
-      }, dashMs + 10);
+    function moveNoTo(cx, cy){
+      // convert center local -> translate relative to its original position by using left/top directly
+      // easiest: set left/top in % via px, keep translate(-50,-50)
+      noBtn.style.left = cx + "px";
+      noBtn.style.top  = cy + "px";
     }
 
-    // Trigger based on inflated rect distance (prevents ever getting on it)
-    function shouldEvade(px, py){
-      const { b, preempt } = tuning();
-
-      // Inflate rect by preempt pixels
-      const left   = b.left   - preempt;
-      const right  = b.right  + preempt;
-      const top    = b.top    - preempt;
+    function pointerTriggers(px, py){
+      const { preempt } = tuning();
+      const b = bRect();
+      const left = b.left - preempt;
+      const right = b.right + preempt;
+      const top = b.top - preempt;
       const bottom = b.bottom + preempt;
-
-      // if pointer is inside inflated rectangle => evade immediately
       return (px >= left && px <= right && py >= top && py <= bottom);
     }
 
-    // Also evade if near edges (uncornerable)
-    function edgeCornered(){
-      const { a, b, padX, padY } = tuning();
-      const cx = (b.left + b.width/2) - a.left;
-      const cy = (b.top  + b.height/2) - a.top;
-      return (
-        cx < padX || cy < padY ||
-        cx > (a.width - padX) || cy > (a.height - padY)
-      );
-    }
-
-    /* ---------- INITIAL PLACEMENT (fix out-of-place on load) ---------- */
-    function initialPlace(){
-      // Turn transitions OFF for first placement so it doesn't “fly in”
-      noBtn.style.transition = "none";
-
-      // Need layout to be stable (image loaded etc.)
-      const a = areaRect();
-      const px = a.left + a.width/2;
-      const py = a.top  + a.height/2;
-
-      const tgt = pickSafeTarget(px, py, true);
-      setNoLocal(tgt.cx, tgt.cy);
-
-      // Next frame: enable transitions
-      requestAnimationFrame(() => {
-        noBtn.style.transition = "transform 90ms cubic-bezier(.15,.9,.2,1)";
-      });
-    }
-
-    // Run after everything is laid out
-    window.addEventListener("load", initialPlace);
-
-    /* ---------- MAKE IT IMPOSSIBLE TO HOVER ---------- */
     let armed = true;
+    let lastJump = 0;
 
-    function onPointerMove(px, py){
+    function maybeEvade(px, py, force=false){
       if (!armed) return;
+      const now = performance.now();
 
-      // Evade BEFORE pointer reaches it
-      if (shouldEvade(px, py)) {
-        dashToTarget(px, py, true);
-        return;
-      }
+      // only move when cursor gets close (or forced by press)
+      if (!force && !pointerTriggers(px, py)) return;
 
-      // If it gets cornered, force a deep interior dash
-      if (edgeCornered()) {
-        dashToTarget(px, py, true);
-      }
+      // light throttle to keep it smooth (prevents spam-jitter)
+      if (!force && now - lastJump < 45) return;
+      lastJump = now;
+
+      const { a } = tuning();
+      const tgt = pickTarget(px, py, true);
+      // set local coords; since we are using left/top with translate(-50,-50),
+      // we need to set left/top relative to playArea.
+      moveNoTo(tgt.cx, tgt.cy);
     }
 
-    // Track globally, not just in the area (so it flees pre-hover)
-    window.addEventListener("pointermove", (e) => onPointerMove(e.clientX, e.clientY), { passive:true });
-    window.addEventListener("pointerdown", (e) => { if(armed) dashToTarget(e.clientX, e.clientY, true); }, { passive:true });
+    // IMPORTANT: when using px left/top for NO, we must make playArea the containing block.
+    // So we set NO to position relative to playArea by using offset parent coordinates.
+    // We'll do that by converting within playArea in maybeEvade:
+    function convertAndEvade(px, py, force=false){
+      const a = aRect();
+      // set the button inside playArea coordinates (so it moves in the white space)
+      // (We already pick targets in playArea local coords.)
+      maybeEvade(px, py, force);
+    }
+
+    // On pointer move: ONLY evasive when close
+    window.addEventListener("pointermove", (e) => convertAndEvade(e.clientX, e.clientY, false), { passive:true });
+
+    // On press: force a move (prevents click-snipes)
+    window.addEventListener("pointerdown", (e) => convertAndEvade(e.clientX, e.clientY, true), { passive:true });
 
     // Touch fallback
     window.addEventListener("touchstart", (e) => {
-      if (!armed) return;
       const t = e.touches && e.touches[0];
-      if (t) dashToTarget(t.clientX, t.clientY, true);
+      if (t) convertAndEvade(t.clientX, t.clientY, true);
     }, { passive:true });
+
+    // IMPORTANT: do NOT reposition on load.
+    // Just ensure left/top are numeric in playArea space:
+    window.addEventListener("load", () => {
+      // convert current % positions to pixel positions within playArea once, WITHOUT MOVING VISUALLY.
+      // We'll read the current computed rect and map it into playArea coords, then set left/top px.
+      const a = aRect();
+      const b = bRect();
+      const cx = (b.left + b.width/2) - a.left;
+      const cy = (b.top  + b.height/2) - a.top;
+
+      // Temporarily disable transition so this doesn't animate.
+      const old = noBtn.style.transition;
+      noBtn.style.transition = "none";
+      noBtn.style.left = cx + "px";
+      noBtn.style.top  = cy + "px";
+      noBtn.style.transform = "translate(-50%, -50%)";
+      requestAnimationFrame(() => { noBtn.style.transition = old || "transform 85ms cubic-bezier(.12,.95,.2,1)"; });
+    });
 
     /* ---------- YES CLICK ---------- */
     yesBtn.addEventListener("click", () => {
