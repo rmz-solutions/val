@@ -19,12 +19,6 @@
 
     * { box-sizing: border-box; }
 
-    html, body {
-      height: 100%;
-      overscroll-behavior: none;
-      -webkit-text-size-adjust: 100%;
-    }
-
     body {
       margin: 0;
       min-height: 100svh;
@@ -64,19 +58,15 @@
     }
 
     h1 {
-      font-size: clamp(24px, 5vw, 44px);
+      font-size: clamp(26px, 4vw, 44px);
       margin: 12px 0 18px;
-      line-height: 1.1;
     }
 
     .button-zone {
       position: relative;
       width: min(520px, 92%);
-      height: 170px;
+      height: 150px;
       margin: 0 auto;
-      user-select: none;
-      -webkit-user-select: none;
-      /* IMPORTANT: allow touch events without page scrolling */
       touch-action: none;
     }
 
@@ -94,7 +84,6 @@
       user-select: none;
       -webkit-tap-highlight-color: transparent;
       transition: transform .12s ease, background .12s ease;
-      touch-action: manipulation;
     }
 
     #yesBtn {
@@ -108,6 +97,8 @@
       left: 62%;
       background: #e5e7eb;
       color: #111827;
+
+      /* smoother motion for the new logic */
       transition: left .08s linear, top .08s linear, transform .12s ease;
     }
 
@@ -124,7 +115,7 @@
     }
 
     .result h2 {
-      font-size: clamp(30px, 5vw, 46px);
+      font-size: clamp(30px, 4.5vw, 46px);
       margin: 10px 0;
     }
 
@@ -138,15 +129,6 @@
       from { transform: scale(.96); opacity: 0; }
       to { transform: scale(1); opacity: 1; }
     }
-
-    /* Mobile layout: make the zone taller and buttons bigger targets */
-    @media (max-width: 520px) {
-      .card { padding: 22px 16px; border-radius: 18px; }
-      .button-zone { width: 100%; height: 230px; }
-      button { font-size: 20px; padding: 18px 26px; }
-      #yesBtn { left: 10%; }
-      #noBtn { left: 55%; }
-    }
   </style>
 </head>
 
@@ -154,49 +136,18 @@
   <canvas id="confettiCanvas"></canvas>
 
   <main class="card">
-    <!-- ANIMAL WITH HEART -->
-    <svg class="art" viewBox="0 0 320 240" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="fur" x1="0" x2="1">
-          <stop offset="0" stop-color="#f7c7a1"/>
-          <stop offset="1" stop-color="#f2a97b"/>
-        </linearGradient>
-        <linearGradient id="heart" x1="0" x2="1">
-          <stop offset="0" stop-color="#ff4d7d"/>
-          <stop offset="1" stop-color="#ff1f68"/>
-        </linearGradient>
-      </defs>
-
-      <path d="M250 50 C250 33 270 25 282 38
-               C294 25 314 33 314 50
-               C314 78 282 92 282 106
-               C282 92 250 78 250 50Z"
-            fill="url(#heart)"/>
-
-      <path d="M90 120 C90 70 140 40 190 60
-               C240 40 290 70 290 120
-               C290 180 240 210 190 210
-               C140 210 90 180 90 120Z"
-            fill="url(#fur)"/>
-
-      <path d="M110 92 L95 55 L140 78 Z" fill="#f2a97b"/>
-      <path d="M270 92 L285 55 L240 78 Z" fill="#f2a97b"/>
-
-      <circle cx="160" cy="130" r="8"/>
-      <circle cx="220" cy="130" r="8"/>
-
-      <path d="M190 144 C186 144 182 148 182 152
-               C182 160 190 164 190 170
-               C190 164 198 160 198 152
-               C198 148 194 144 190 144Z"
-            fill="#ff7aa2"/>
-    </svg>
+   <!-- PUSS IN BOOTS IMAGE -->
+<img
+  class="art"
+  src="puss-in-boots-meme-3.jpg"
+  alt="Puss in Boots with big eyes"
+/>
 
     <h1>Maya, will you be my valentine?</h1>
 
     <section class="button-zone" id="zone">
-      <button id="yesBtn" type="button">Yes</button>
-      <button id="noBtn" type="button">No</button>
+      <button id="yesBtn">Yes</button>
+      <button id="noBtn">No</button>
     </section>
 
     <div class="hint" id="hint">“No” seems a bit shy :)</div>
@@ -231,9 +182,12 @@
 
     resizeConfettiCanvas();
     window.addEventListener("resize", resizeConfettiCanvas);
-    window.addEventListener("orientationchange", () => setTimeout(resizeConfettiCanvas, 200));
+    window.addEventListener("orientationchange", () => setTimeout(resizeConfettiCanvas, 150));
 
-    const confettiInstance = confetti.create(confettiCanvas, { resize: false, useWorker: true });
+    const confettiInstance = confetti.create(confettiCanvas, {
+      resize: false,
+      useWorker: true
+    });
 
     function fullScreenConfetti() {
       const end = Date.now() + 1600;
@@ -267,36 +221,17 @@
       yesBtn.style.transform = `translateY(-50%) scale(${yesScale})`;
     }
 
-    /* ---------- NO BUTTON (TOUCH-FIRST + UN-CORNERABLE + WRAP) ---------- */
+    /* ---------- NO BUTTON RUNS AWAY (UN-CORNERABLE + WRAP) ---------- */
     function clamp(n, min, max) {
       return Math.max(min, Math.min(max, n));
     }
 
-    // We tune differently for touch vs mouse.
-    function isTouchDevice() {
-      return (
-        ("ontouchstart" in window) ||
-        (navigator.maxTouchPoints && navigator.maxTouchPoints > 0)
-      );
-    }
-
-    // These get updated on load/resize.
-    let TRIGGER_RADIUS = 220;      // how close before it flees
-    let MIN_SEPARATION = 200;      // how far it must land away from finger/cursor
-
-    const EDGE_PADDING = 14;       // absolute clamp
-    const SAFE_PADDING = 56;       // interior-only band (prevents pinning/cornering)
-    const MAX_TRIES = 26;
-
-    function retune() {
-      const touch = isTouchDevice() || window.matchMedia("(pointer: coarse)").matches;
-      // On phones, fingers are big and there's no "hover", so we react earlier and jump farther.
-      TRIGGER_RADIUS = touch ? 320 : 230;
-      MIN_SEPARATION = touch ? 260 : 210;
-    }
-    retune();
-    window.addEventListener("resize", retune);
-    window.addEventListener("orientationchange", () => setTimeout(retune, 200));
+    // Tune these (bigger = harder to catch)
+    const TRIGGER_RADIUS = 220;      // start running earlier
+    const MIN_SEPARATION = 200;      // must land far from pointer
+    const EDGE_PADDING = 14;         // hard clamp boundary
+    const SAFE_PADDING = 52;         // "no-go" band near edges (prevents pinning/cornering)
+    const MAX_TRIES = 22;
 
     function setNoPosition(left, top) {
       noBtn.style.left = left + "px";
@@ -304,7 +239,7 @@
       noBtn.style.transform = "none";
     }
 
-    function distanceToPoint(left, top, px, py) {
+    function distanceToPointer(left, top, px, py) {
       const z = zone.getBoundingClientRect();
       const b = noBtn.getBoundingClientRect();
       const cx = z.left + left + b.width / 2;
@@ -325,26 +260,28 @@
       const spanX = Math.max(1, maxLeft - 2 * SAFE_PADDING);
       const spanY = Math.max(1, maxTop  - 2 * SAFE_PADDING);
 
-      for (let i = 0; i < 70; i++) {
+      for (let i = 0; i < 50; i++) {
         const left = SAFE_PADDING + Math.random() * spanX;
         const top  = SAFE_PADDING + Math.random() * spanY;
-        if (distanceToPoint(left, top, px, py) >= MIN_SEPARATION) return { left, top };
+        if (distanceToPointer(left, top, px, py) >= MIN_SEPARATION) return { left, top };
       }
       return { left: maxLeft * 0.5, top: maxTop * 0.5 };
     }
 
-    // Wrap to opposite side (mirror + jitter), then enforce safe interior rules
+    // WRAP: mirror to opposite side (plus jitter), then enforce safe interior rules
     function wrapOpposite(curLeft, curTop, maxLeft, maxTop, px, py) {
-      const jitterX = (Math.random() * 2 - 1) * Math.min(110, maxLeft * 0.30);
-      const jitterY = (Math.random() * 2 - 1) * Math.min(85,  maxTop  * 0.45);
+      const b = noBtn.getBoundingClientRect();
+      const jitterX = (Math.random() * 2 - 1) * Math.min(80, maxLeft * 0.25);
+      const jitterY = (Math.random() * 2 - 1) * Math.min(50, maxTop * 0.35);
 
       let left = (maxLeft - curLeft) + jitterX;
-      let top  = (maxTop  - curTop)  + jitterY;
+      let top  = (maxTop - curTop) + jitterY;
 
       left = clamp(left, EDGE_PADDING, maxLeft - EDGE_PADDING);
       top  = clamp(top,  EDGE_PADDING, maxTop  - EDGE_PADDING);
 
-      if (isNearEdge(left, top, maxLeft, maxTop) || distanceToPoint(left, top, px, py) < MIN_SEPARATION) {
+      // If wrap landed near edges or too close to pointer, pick a random safe spot.
+      if (isNearEdge(left, top, maxLeft, maxTop) || distanceToPointer(left, top, px, py) < MIN_SEPARATION) {
         return randomSafeSpot(maxLeft, maxTop, px, py);
       }
       return { left, top };
@@ -360,7 +297,7 @@
       const curLeft = b.left - z.left;
       const curTop  = b.top - z.top;
 
-      // If cornered or forced wrap -> wrap/teleport immediately
+      // If getting cornered OR we explicitly want to wrap, wrap/teleport immediately.
       if (forceWrap || isNearEdge(curLeft, curTop, maxLeft, maxTop)) {
         const spot = wrapOpposite(curLeft, curTop, maxLeft, maxTop, px, py);
         setNoPosition(spot.left, spot.top);
@@ -368,7 +305,7 @@
         return;
       }
 
-      // Run away directionally (only accept interior placements)
+      // Otherwise: run away, but ONLY accept interior placements (never edge/cornerable)
       for (let i = 0; i < MAX_TRIES; i++) {
         const btnCx = b.left + b.width / 2;
         const btnCy = b.top + b.height / 2;
@@ -378,83 +315,60 @@
         const mag = Math.hypot(dx, dy) || 1;
         dx /= mag; dy /= mag;
 
-        const jitter = (Math.random() * 190 - 95) * (Math.PI / 180);
+        // add randomness so it isn't predictable
+        const jitter = (Math.random() * 170 - 85) * (Math.PI / 180);
         const cos = Math.cos(jitter), sin = Math.sin(jitter);
         const jx = dx * cos - dy * sin;
         const jy = dx * sin + dy * cos;
 
-        const dist = (isTouchDevice() ? 320 : 250) + Math.random() * (isTouchDevice() ? 260 : 180) + i * 10;
+        const dist = 230 + Math.random() * 170 + i * 10;
 
         let newLeft = curLeft + jx * dist;
-        let newTop  = curTop  + jy * dist;
+        let newTop  = curTop + jy * dist;
 
+        // hard clamp
         newLeft = clamp(newLeft, EDGE_PADDING, maxLeft - EDGE_PADDING);
         newTop  = clamp(newTop,  EDGE_PADDING, maxTop  - EDGE_PADDING);
 
+        // reject edge/cornerable placements
         if (isNearEdge(newLeft, newTop, maxLeft, maxTop)) continue;
-        if (distanceToPoint(newLeft, newTop, px, py) < MIN_SEPARATION) continue;
+
+        // reject too close to pointer
+        if (distanceToPointer(newLeft, newTop, px, py) < MIN_SEPARATION) continue;
 
         setNoPosition(newLeft, newTop);
         growYes();
         return;
       }
 
+      // If we couldn't find a good directional spot, teleport to safe interior
       const spot = randomSafeSpot(maxLeft, maxTop, px, py);
       setNoPosition(spot.left, spot.top);
       growYes();
     }
 
-    // Helper: get a point from either pointer or touch events
-    function getEventPoint(e) {
-      if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
-      return { x: e.clientX, y: e.clientY };
-    }
-
-    // This is the key "mobile friendly" behavior:
-    // On mobile there's no hover/cursor, so ANY touch in the zone acts like "the finger is here".
-    // If the finger is near the No button, it jumps away immediately.
-    function reactToFinger(e, forceWrap = false) {
-      const { x, y } = getEventPoint(e);
-
+    // Start running earlier
+    zone.addEventListener("pointermove", (e) => {
       const b = noBtn.getBoundingClientRect();
-      const d = Math.hypot((b.left + b.width / 2) - x, (b.top + b.height / 2) - y);
+      const d = Math.hypot(
+        (b.left + b.width / 2) - e.clientX,
+        (b.top + b.height / 2) - e.clientY
+      );
+      if (d < TRIGGER_RADIUS) moveNoSmart(e.clientX, e.clientY);
+    });
 
-      // If touch is near, or the touch is literally on/inside the No button, jump.
-      const onNo = (x >= b.left && x <= b.right && y >= b.top && y <= b.bottom);
+    // Recommendation: jump the moment the pointer enters the button (prevents fast “snipes”)
+    noBtn.addEventListener("pointerenter", (e) => {
+      moveNoSmart(e.clientX, e.clientY, true); // force wrap
+    });
 
-      if (onNo || d < TRIGGER_RADIUS) {
-        // forceWrap makes it feel like it "teleports" away on direct attempts
-        moveNoSmart(x, y, forceWrap || onNo);
-      }
-    }
-
-    /* ---------- INPUT EVENTS ---------- */
-
-    // Desktop/trackpad: proximity on pointer move
-    zone.addEventListener("pointermove", (e) => reactToFinger(e, false), { passive: true });
-
-    // If they try to press on/near it (desktop or mobile pointer), force wrap immediately
-    zone.addEventListener("pointerdown", (e) => {
+    // Also jump on press/tap (mobile)
+    noBtn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      reactToFinger(e, true);
-    }, { passive: false });
+      moveNoSmart(e.clientX, e.clientY, true); // force wrap
+    });
 
-    // Extra: if the pointer ever enters the No button area, wrap immediately (fast snipes)
-    noBtn.addEventListener("pointerenter", (e) => reactToFinger(e, true), { passive: true });
-
-    // Mobile: touchstart/move are the primary “finger tracking”
-    zone.addEventListener("touchstart", (e) => {
-      e.preventDefault();          // prevent scrolling/zoom gestures inside the zone
-      reactToFinger(e, true);      // immediate jump on first touch
-    }, { passive: false });
-
-    zone.addEventListener("touchmove", (e) => {
-      e.preventDefault();
-      reactToFinger(e, false);     // keep fleeing while finger moves
-    }, { passive: false });
-
-    // Prevent the "No" click from ever firing
+    // Prevent click
     noBtn.addEventListener("click", (e) => e.preventDefault());
 
     /* ---------- YES CLICK ---------- */
@@ -465,9 +379,6 @@
       resizeConfettiCanvas();
       fullScreenConfetti();
     });
-
-    // iOS pinch gestures inside the page (optional safety)
-    document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
   </script>
 </body>
 </html>
