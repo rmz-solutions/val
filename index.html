@@ -1,258 +1,336 @@
-<script>
-  const zone = document.getElementById("zone");
-  const yesBtn = document.getElementById("yesBtn");
-  const noBtn  = document.getElementById("noBtn");
-  const result = document.getElementById("result");
-  const hint   = document.getElementById("hint");
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Maya, will you be my Valentine?</title>
 
-  /* ---------- CONFETTI ---------- */
-  const confettiCanvas = document.getElementById("confettiCanvas");
+  <!-- Confetti (optional). If this fails to load, the page still works. -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  function resizeConfettiCanvas() {
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    confettiCanvas.width = Math.floor(window.innerWidth * dpr);
-    confettiCanvas.height = Math.floor(window.innerHeight * dpr);
-    confettiCanvas.style.width = "100vw";
-    confettiCanvas.style.height = "100vh";
-  }
+  <style>
+    :root{
+      --bg1:#ffd6e7; --bg2:#ffeef6; --card:#ffffffcc; --yes:#ff3b7a; --yesHover:#ff1f68;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;overscroll-behavior:none}
+    body{
+      margin:0; min-height:100svh; display:grid; place-items:center;
+      background:radial-gradient(circle at top,var(--bg2),var(--bg1));
+      font-family:system-ui,sans-serif; overflow:hidden; padding:16px;
+      -webkit-text-size-adjust:100%; touch-action:none;
+    }
 
-  resizeConfettiCanvas();
-  window.addEventListener("resize", resizeConfettiCanvas);
-  window.addEventListener("orientationchange", () => setTimeout(resizeConfettiCanvas, 200));
+    #confettiCanvas{position:fixed; inset:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;}
 
-  const confettiInstance = confetti.create(confettiCanvas, { resize: false, useWorker: true });
+    .card{
+      width:min(720px,92vw);
+      padding:26px 22px;
+      background:var(--card);
+      backdrop-filter:blur(10px);
+      border-radius:22px;
+      text-align:center;
+      box-shadow:0 18px 60px rgba(0,0,0,.15);
+    }
 
-  function fullScreenConfetti() {
-    const end = Date.now() + 1600;
+    .art{
+      width:min(260px,80vw);
+      margin:0 auto 10px;
+      display:block;
+      filter:drop-shadow(0 10px 14px rgba(0,0,0,.12));
+      border-radius:16px;
+    }
 
-    (function frame() {
-      confettiInstance({
-        particleCount: 12,
-        spread: 90,
-        startVelocity: 45,
-        ticks: 180,
-        origin: { x: Math.random(), y: Math.random() * 0.3 }
-      });
-      if (Date.now() < end) requestAnimationFrame(frame);
-    })();
+    h1{font-size:clamp(24px,5vw,44px); margin:12px 0 18px; line-height:1.1;}
 
-    setTimeout(() => {
-      confettiInstance({
-        particleCount: 300,
-        spread: 140,
-        startVelocity: 60,
-        ticks: 220,
-        origin: { x: 0.5, y: 0.55 }
-      });
-    }, 300);
-  }
+    .button-zone{
+      position:relative;
+      width:min(520px,92%);
+      height:190px; /* a bit taller helps make teleporting feel more random */
+      margin:0 auto;
+      user-select:none;
+      -webkit-user-select:none;
+      touch-action:none;
+    }
 
-  /* ---------- NO BUTTON: FAST + SMOOTH RANDOM TELEPORT, UNCORNERABLE ---------- */
+    button{
+      position:absolute;
+      top:50%;
+      transform:translateY(-50%);
+      padding:16px 24px;
+      font-size:18px;
+      font-weight:800;
+      border-radius:999px;
+      border:none;
+      cursor:pointer;
+      box-shadow:0 10px 24px rgba(0,0,0,.14);
+      -webkit-tap-highlight-color:transparent;
+      user-select:none;
+      white-space:nowrap;
+    }
 
-  // Tuning knobs
-  let TRIGGER_RADIUS = 260;      // how close you can get before it moves
-  let MIN_SEPARATION = 240;      // how far away it must land from pointer
-  let SAFE_PADDING = 64;         // no-go band near edges (prevents cornering)
-  const EDGE_PADDING = 10;       // absolute clamp boundary
-  const MAX_TRIES = 120;
+    #yesBtn{left:16%; background:var(--yes); color:#fff;}
+    #yesBtn:hover{background:var(--yesHover);}
 
-  function updateTuning() {
-    const isMobile = window.matchMedia("(max-width: 768px)").matches;
-    TRIGGER_RADIUS = isMobile ? 320 : 260;
-    MIN_SEPARATION = isMobile ? 270 : 240;
-    SAFE_PADDING   = isMobile ? 72  : 64;
-  }
-  updateTuning();
-  window.addEventListener("resize", updateTuning);
-  window.addEventListener("orientationchange", () => setTimeout(updateTuning, 200));
+    #noBtn{
+      left:60%;
+      background:#e5e7eb;
+      color:#111827;
+      will-change:left, top;
+      transition:left 70ms ease-out, top 70ms ease-out; /* fast + smooth */
+    }
 
-  // Make movement smooth (uses left/top animation)
-  // (If you already have transition on #noBtn that's fine too.)
-  noBtn.style.willChange = "left, top";
-  noBtn.style.transition = "left 70ms ease-out, top 70ms ease-out";
+    .hint{margin-top:10px; font-size:13px; opacity:.7;}
+    .result{display:none; margin-top:18px; animation:pop .35s ease;}
+    .result h2{font-size:clamp(30px,5vw,46px); margin:10px 0;}
+    .fireworks{width:min(380px,90vw); margin:0 auto; display:block; border-radius:14px;}
 
-  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+    @keyframes pop{from{transform:scale(.96); opacity:0} to{transform:scale(1); opacity:1}}
 
-  function getMax() {
-    const z = zone.getBoundingClientRect();
-    const b = noBtn.getBoundingClientRect();
-    return {
-      maxLeft: z.width - b.width,
-      maxTop:  z.height - b.height
-    };
-  }
+    @media (max-width:480px){
+      .card{padding:22px 16px; border-radius:18px;}
+      .button-zone{height:220px; width:100%;}
+      #yesBtn{left:12%;}
+      #noBtn{left:58%;}
+    }
+  </style>
+</head>
 
-  function isNearEdge(left, top, maxLeft, maxTop) {
-    return (
-      left < SAFE_PADDING ||
-      top < SAFE_PADDING ||
-      left > (maxLeft - SAFE_PADDING) ||
-      top > (maxTop - SAFE_PADDING)
-    );
-  }
+<body>
+  <canvas id="confettiCanvas"></canvas>
 
-  function distToPointer(left, top, px, py) {
-    const z = zone.getBoundingClientRect();
-    const b = noBtn.getBoundingClientRect();
-    const cx = z.left + left + b.width / 2;
-    const cy = z.top  + top  + b.height / 2;
-    return Math.hypot(cx - px, cy - py);
-  }
+  <main class="card">
+    <img class="art" src="puss-in-boots-meme-3.jpg" alt="Puss in Boots pleading eyes" />
+    <h1>Maya, will you be my valentine?</h1>
 
-  function setNo(left, top) {
-    noBtn.style.left = `${left}px`;
-    noBtn.style.top  = `${top}px`;
-    noBtn.style.transform = "none";
-  }
+    <section class="button-zone" id="zone">
+      <button id="yesBtn" type="button">Yes</button>
+      <button id="noBtn" type="button">No</button>
+    </section>
 
-  // Pick a truly random safe interior point, far from pointer
-  function randomSafeSpot(px, py) {
-    const { maxLeft, maxTop } = getMax();
+    <div class="hint" id="hint">“No” seems a bit shy :)</div>
 
-    const spanX = Math.max(1, maxLeft - 2 * SAFE_PADDING);
-    const spanY = Math.max(1, maxTop  - 2 * SAFE_PADDING);
+    <section class="result" id="result">
+      <h2>YAY! 🎉</h2>
+      <img class="fireworks" src="giphy.gif" alt="Tiger Woods celebration" />
+    </section>
+  </main>
 
-    for (let i = 0; i < MAX_TRIES; i++) {
-      const left = SAFE_PADDING + Math.random() * spanX;
-      const top  = SAFE_PADDING + Math.random() * spanY;
+  <script>
+    // Run after DOM is ready (prevents blank page from timing issues)
+    window.addEventListener("DOMContentLoaded", () => {
+      const zone = document.getElementById("zone");
+      const yesBtn = document.getElementById("yesBtn");
+      const noBtn  = document.getElementById("noBtn");
+      const result = document.getElementById("result");
+      const hint   = document.getElementById("hint");
 
-      if (distToPointer(left, top, px, py) >= MIN_SEPARATION) {
-        return { left, top };
+      /* -------- Confetti (safe if CDN blocked) -------- */
+      const confettiCanvas = document.getElementById("confettiCanvas");
+
+      function resizeConfettiCanvas() {
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        confettiCanvas.width = Math.floor(window.innerWidth * dpr);
+        confettiCanvas.height = Math.floor(window.innerHeight * dpr);
+        confettiCanvas.style.width = "100vw";
+        confettiCanvas.style.height = "100vh";
       }
-    }
+      resizeConfettiCanvas();
+      window.addEventListener("resize", resizeConfettiCanvas);
+      window.addEventListener("orientationchange", () => setTimeout(resizeConfettiCanvas, 200));
 
-    // Fallback: center-ish
-    return {
-      left: clamp(maxLeft * 0.5, SAFE_PADDING, maxLeft - SAFE_PADDING),
-      top:  clamp(maxTop  * 0.5, SAFE_PADDING, maxTop  - SAFE_PADDING)
-    };
-  }
+      const hasConfetti = typeof window.confetti === "function";
+      const confettiInstance = hasConfetti ? window.confetti.create(confettiCanvas, { resize: false, useWorker: true }) : null;
 
-  // Teleport in a way that never lets it get pinned in corners:
-  // if current is near edge => force a deep interior jump first.
-  function teleportNo(px, py, force = false) {
-    const z = zone.getBoundingClientRect();
-    const b = noBtn.getBoundingClientRect();
-    const { maxLeft, maxTop } = getMax();
+      function fullScreenConfetti() {
+        if (!confettiInstance) return; // if CDN blocked, skip
+        const end = Date.now() + 1600;
 
-    const curLeft = b.left - z.left;
-    const curTop  = b.top  - z.top;
+        (function frame() {
+          confettiInstance({
+            particleCount: 12,
+            spread: 90,
+            startVelocity: 45,
+            ticks: 180,
+            origin: { x: Math.random(), y: Math.random() * 0.3 }
+          });
+          if (Date.now() < end) requestAnimationFrame(frame);
+        })();
 
-    // If being cornered, make the safe band even stricter for the next hop
-    // so it jumps deeper inside.
-    const oldSafe = SAFE_PADDING;
-    if (force || isNearEdge(curLeft, curTop, maxLeft, maxTop)) {
-      SAFE_PADDING = Math.min(96, oldSafe + 10);
-      const spot = randomSafeSpot(px, py);
-      setNo(spot.left, spot.top);
-      SAFE_PADDING = oldSafe;
-      return;
-    }
+        setTimeout(() => {
+          confettiInstance({
+            particleCount: 300,
+            spread: 140,
+            startVelocity: 60,
+            ticks: 220,
+            origin: { x: 0.5, y: 0.55 }
+          });
+        }, 300);
+      }
 
-    const spot = randomSafeSpot(px, py);
-    setNo(spot.left, spot.top);
-  }
+      /* -------- NO button: random teleport, uncatchable, uncornerable -------- */
+      let TRIGGER_RADIUS = 280;
+      let MIN_SEPARATION = 250;
+      let SAFE_PADDING   = 70;
+      const EDGE_PADDING = 10;
+      const MAX_TRIES    = 140;
+      const COOLDOWN_MS  = 55; // fast but not jittery
 
-  /* ---------- POINTER TRACKING (FAST + CONTINUOUS) ---------- */
-  let lastX = null, lastY = null;
-  let chasing = false;
+      function updateTuning() {
+        const isMobile = window.matchMedia("(max-width: 768px)").matches;
+        TRIGGER_RADIUS = isMobile ? 340 : 280;
+        MIN_SEPARATION = isMobile ? 280 : 250;
+        SAFE_PADDING   = isMobile ? 78  : 70;
+      }
+      updateTuning();
+      window.addEventListener("resize", updateTuning);
+      window.addEventListener("orientationchange", () => setTimeout(updateTuning, 200));
 
-  function updateLast(e) {
-    if (!e) return;
-    if (e.touches && e.touches[0]) {
-      lastX = e.touches[0].clientX;
-      lastY = e.touches[0].clientY;
-    } else {
-      lastX = e.clientX;
-      lastY = e.clientY;
-    }
-  }
+      const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-  // Each frame, if you’re close enough, it jumps.
-  // Cooldown prevents jittery rapid-fire, but still feels uncatchable.
-  let cooldownUntil = 0;
-  const COOLDOWN_MS = 65;
-
-  function tick() {
-    if (chasing && lastX != null && lastY != null) {
-      const now = performance.now();
-      if (now >= cooldownUntil) {
+      function getMax() {
+        const z = zone.getBoundingClientRect();
         const b = noBtn.getBoundingClientRect();
-        const d = Math.hypot(
-          (b.left + b.width / 2) - lastX,
-          (b.top  + b.height / 2) - lastY
+        return { maxLeft: z.width - b.width, maxTop: z.height - b.height, z, b };
+      }
+
+      function isNearEdge(left, top, maxLeft, maxTop) {
+        return (
+          left < SAFE_PADDING ||
+          top < SAFE_PADDING ||
+          left > (maxLeft - SAFE_PADDING) ||
+          top > (maxTop - SAFE_PADDING)
         );
-        if (d < TRIGGER_RADIUS) {
-          teleportNo(lastX, lastY);
-          cooldownUntil = now + COOLDOWN_MS;
+      }
+
+      function distToPointer(left, top, px, py) {
+        const { z, b } = getMax();
+        const cx = z.left + left + b.width / 2;
+        const cy = z.top  + top  + b.height / 2;
+        return Math.hypot(cx - px, cy - py);
+      }
+
+      function setNo(left, top) {
+        noBtn.style.left = `${left}px`;
+        noBtn.style.top  = `${top}px`;
+        noBtn.style.transform = "none";
+      }
+
+      function randomSafeSpot(px, py) {
+        const { maxLeft, maxTop } = getMax();
+
+        const spanX = Math.max(1, maxLeft - 2 * SAFE_PADDING);
+        const spanY = Math.max(1, maxTop  - 2 * SAFE_PADDING);
+
+        for (let i = 0; i < MAX_TRIES; i++) {
+          const left = SAFE_PADDING + Math.random() * spanX;
+          const top  = SAFE_PADDING + Math.random() * spanY;
+          if (distToPointer(left, top, px, py) >= MIN_SEPARATION) return { left, top };
+        }
+
+        return {
+          left: clamp(maxLeft * 0.5, SAFE_PADDING, maxLeft - SAFE_PADDING),
+          top:  clamp(maxTop  * 0.5, SAFE_PADDING, maxTop  - SAFE_PADDING)
+        };
+      }
+
+      function teleportNo(px, py, force=false) {
+        const { maxLeft, maxTop, z, b } = getMax();
+        const curLeft = b.left - z.left;
+        const curTop  = b.top  - z.top;
+
+        // If cornered, force deeper interior hop
+        const oldSafe = SAFE_PADDING;
+        if (force || isNearEdge(curLeft, curTop, maxLeft, maxTop)) {
+          SAFE_PADDING = Math.min(100, oldSafe + 12);
+          const spot = randomSafeSpot(px, py);
+          setNo(spot.left, spot.top);
+          SAFE_PADDING = oldSafe;
+          return;
+        }
+
+        const spot = randomSafeSpot(px, py);
+        setNo(spot.left, spot.top);
+      }
+
+      /* -------- Pointer tracking (continuous) -------- */
+      let lastX=null, lastY=null;
+      let chasing=false;
+      let cooldownUntil=0;
+
+      function updateLast(e) {
+        if (!e) return;
+        if (e.touches && e.touches[0]) {
+          lastX = e.touches[0].clientX;
+          lastY = e.touches[0].clientY;
+        } else {
+          lastX = e.clientX;
+          lastY = e.clientY;
         }
       }
-    }
 
-    // If for any reason it ends up near the edge, auto-uncorner it.
-    const z = zone.getBoundingClientRect();
-    const b = noBtn.getBoundingClientRect();
-    const { maxLeft, maxTop } = getMax();
-    const curLeft = b.left - z.left;
-    const curTop  = b.top  - z.top;
-    if (isNearEdge(curLeft, curTop, maxLeft, maxTop) && lastX != null && lastY != null) {
-      teleportNo(lastX, lastY, true);
-    }
+      function tick() {
+        if (chasing && lastX!=null && lastY!=null) {
+          const now = performance.now();
+          if (now >= cooldownUntil) {
+            const bb = noBtn.getBoundingClientRect();
+            const d = Math.hypot((bb.left + bb.width/2) - lastX, (bb.top + bb.height/2) - lastY);
+            if (d < TRIGGER_RADIUS) {
+              teleportNo(lastX, lastY);
+              cooldownUntil = now + COOLDOWN_MS;
+            }
+          }
+        }
 
-    requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
+        // Auto-uncorner if it ever gets too close to edges
+        if (lastX!=null && lastY!=null) {
+          const { maxLeft, maxTop, z, b } = getMax();
+          const curLeft = b.left - z.left;
+          const curTop  = b.top  - z.top;
+          if (isNearEdge(curLeft, curTop, maxLeft, maxTop)) {
+            teleportNo(lastX, lastY, true);
+          }
+        }
 
-  // Pointer events
-  zone.addEventListener("pointermove", (e) => updateLast(e), { passive: true });
-  zone.addEventListener("pointerdown", (e) => {
-    updateLast(e);
-    chasing = true;
-    // Immediate jump on press so you can’t tap it
-    teleportNo(lastX, lastY, true);
-  }, { passive: false });
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
 
-  zone.addEventListener("pointerup", () => { chasing = false; }, { passive: true });
-  zone.addEventListener("pointercancel", () => { chasing = false; }, { passive: true });
+      zone.addEventListener("pointermove", (e) => updateLast(e), { passive:true });
+      zone.addEventListener("pointerdown", (e) => {
+        updateLast(e);
+        chasing = true;
+        teleportNo(lastX, lastY, true); // instant hop on press
+      }, { passive:false });
+      zone.addEventListener("pointerup", () => chasing=false, { passive:true });
+      zone.addEventListener("pointercancel", () => chasing=false, { passive:true });
 
-  // Touch fallback (older Safari)
-  zone.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-    updateLast(e);
-    chasing = true;
-    teleportNo(lastX, lastY, true);
-  }, { passive: false });
+      zone.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        updateLast(e);
+        chasing = true;
+        teleportNo(lastX, lastY, true);
+      }, { passive:false });
+      zone.addEventListener("touchmove", (e) => { e.preventDefault(); updateLast(e); }, { passive:false });
+      zone.addEventListener("touchend", () => chasing=false, { passive:true });
+      zone.addEventListener("touchcancel", () => chasing=false, { passive:true });
 
-  zone.addEventListener("touchmove", (e) => {
-    e.preventDefault();
-    updateLast(e);
-  }, { passive: false });
+      // Anti-snipe
+      noBtn.addEventListener("pointerenter", (e) => { updateLast(e); teleportNo(e.clientX, e.clientY, true); });
+      noBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); updateLast(e); teleportNo(e.clientX, e.clientY, true); }, { passive:false });
+      noBtn.addEventListener("click", (e) => e.preventDefault());
 
-  zone.addEventListener("touchend", () => { chasing = false; }, { passive: true });
-  zone.addEventListener("touchcancel", () => { chasing = false; }, { passive: true });
+      /* -------- YES click -------- */
+      yesBtn.addEventListener("click", () => {
+        zone.style.display = "none";
+        hint.style.display = "none";
+        result.style.display = "block";
+        resizeConfettiCanvas();
+        fullScreenConfetti();
+      });
 
-  // Extra "uncatchable" defenses
-  noBtn.addEventListener("pointerenter", (e) => {
-    updateLast(e);
-    teleportNo(e.clientX, e.clientY, true);
-  });
-
-  noBtn.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    updateLast(e);
-    teleportNo(e.clientX, e.clientY, true);
-  }, { passive: false });
-
-  noBtn.addEventListener("click", (e) => e.preventDefault());
-
-  /* ---------- YES CLICK (NO GROWTH) ---------- */
-  yesBtn.addEventListener("click", () => {
-    zone.style.display = "none";
-    hint.style.display = "none";
-    result.style.display = "block";
-    resizeConfettiCanvas();
-    fullScreenConfetti();
-  });
-
-  document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
-</script>
+      document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive:false });
+    });
+  </script>
+</body>
+</html>
