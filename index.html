@@ -9,11 +9,10 @@
 
   <style>
     :root{
-      --bg1:#ffd6e7; --bg2:#ffeef6; --card:#ffffffcc;
-      --yes:#ff3b7a; --yesHover:#ff1f68;
+      --bg1:#ffd6e7; --bg2:#ffeef6; --card:#ffffffcc; --yes:#ff3b7a; --yesHover:#ff1f68;
     }
     *{box-sizing:border-box}
-    html,body{height:100%;overscroll-behavior:none}
+    html,body{height:100%; overscroll-behavior:none}
     body{
       margin:0; min-height:100svh; display:grid; place-items:center;
       background:radial-gradient(circle at top,var(--bg2),var(--bg1));
@@ -21,10 +20,7 @@
       -webkit-text-size-adjust:100%; touch-action:none;
     }
 
-    #confettiCanvas{
-      position:fixed; inset:0; width:100vw; height:100vh;
-      pointer-events:none; z-index:9999;
-    }
+    #confettiCanvas{position:fixed; inset:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;}
 
     .card{
       width:min(720px,92vw);
@@ -53,16 +49,14 @@
       line-height:1.1;
     }
 
-    /* THIS is the white space where NO can roam freely */
+    /* This is the "white space" where No can roam */
     #playArea{
       position:relative;
       width:min(560px, 96%);
       margin:0 auto;
-      height:220px;
+      height:240px;
       border-radius:18px;
-      /* keep it visually "white space" */
       background:transparent;
-      /* prevent selecting / gestures */
       user-select:none;
       -webkit-user-select:none;
       touch-action:none;
@@ -79,36 +73,33 @@
       box-shadow:0 10px 24px rgba(0,0,0,.14);
       -webkit-tap-highlight-color:transparent;
       white-space:nowrap;
-      transform:translate(-50%, -50%);
     }
 
     #yesBtn{
       left:28%;
       top:50%;
+      transform:translate(-50%, -50%);
       background:var(--yes);
       color:#fff;
     }
     #yesBtn:hover{background:var(--yesHover);}
 
+    /* NO uses GPU transform; we animate via JS by updating --nx/--ny */
     #noBtn{
-      left:72%;
-      top:50%;
+      left:0; top:0;
+      transform: translate3d(var(--nx, 0px), var(--ny, 0px), 0) translate(-50%, -50%);
       background:#e5e7eb;
       color:#111827;
 
-      /* FAST + SMOOTH */
-      will-change:left, top;
-      transition:left 45ms linear, top 45ms linear;
-
-      /* KEY: mouse can never hover/click it */
+      /* mouse can never actually hover/click it */
       pointer-events:none;
+
+      /* transitions get enabled after first placement */
+      transition: none;
+      will-change: transform;
     }
 
-    .hint{
-      margin-top:2px;
-      font-size:13px;
-      opacity:.7;
-    }
+    .hint{margin-top:2px; font-size:13px; opacity:.7;}
 
     .result{
       display:none;
@@ -122,9 +113,8 @@
 
     @media (max-width:480px){
       .card{padding:22px 16px; border-radius:18px;}
-      #playArea{height:280px; width:100%;}
+      #playArea{height:300px; width:100%;}
       #yesBtn{left:26%;}
-      #noBtn{left:74%;}
     }
   </style>
 </head>
@@ -134,10 +124,8 @@
 
   <main class="card">
     <img class="art" src="puss-in-boots-meme-3.jpg" alt="Puss in Boots" />
-
     <h1>Maya, will you be my valentine?</h1>
 
-    <!-- FREE ROAM AREA (between question and hint) -->
     <section id="playArea">
       <button id="yesBtn" type="button">Yes</button>
       <button id="noBtn" type="button">No</button>
@@ -154,12 +142,12 @@
   <script>
     const playArea = document.getElementById("playArea");
     const yesBtn = document.getElementById("yesBtn");
-    const noBtn = document.getElementById("noBtn");
+    const noBtn  = document.getElementById("noBtn");
     const result = document.getElementById("result");
-    const hint = document.getElementById("hint");
+    const hint   = document.getElementById("hint");
     const confettiCanvas = document.getElementById("confettiCanvas");
 
-    /* ---- Confetti (safe) ---- */
+    /* ---------- Confetti (safe) ---------- */
     function resizeConfettiCanvas(){
       const dpr = Math.max(1, window.devicePixelRatio || 1);
       confettiCanvas.width = Math.floor(window.innerWidth * dpr);
@@ -176,79 +164,74 @@
 
     function fullScreenConfetti(){
       if(!confettiInstance) return;
-      const end = Date.now() + 1600;
+      const end = Date.now() + 1400;
       (function frame(){
         confettiInstance({
           particleCount: 14,
           spread: 100,
-          startVelocity: 50,
+          startVelocity: 52,
           ticks: 190,
           origin: { x: Math.random(), y: Math.random() * 0.35 }
         });
         if(Date.now() < end) requestAnimationFrame(frame);
       })();
-      setTimeout(() => {
-        confettiInstance({
-          particleCount: 260,
-          spread: 140,
-          startVelocity: 60,
-          ticks: 220,
-          origin: { x: 0.5, y: 0.55 }
-        });
-      }, 250);
+      setTimeout(() => confettiInstance({
+        particleCount: 260,
+        spread: 140,
+        startVelocity: 62,
+        ticks: 220,
+        origin: { x: 0.5, y: 0.55 }
+      }), 250);
     }
 
-    /* ---- NO BUTTON: true 2D teleport anywhere in playArea ---- */
+    /* ---------- NO movement: smooth dash to random safe target ---------- */
+
     const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-    function geom(){
-      const a = playArea.getBoundingClientRect();
-      const b = noBtn.getBoundingClientRect();
-      const maxLeft = Math.max(0, a.width - b.width);
-      const maxTop  = Math.max(0, a.height - b.height);
-      return { a, b, maxLeft, maxTop };
+    function areaRect(){
+      return playArea.getBoundingClientRect();
     }
 
-    function tuning(maxLeft, maxTop){
-      // Dynamic so it never collapses to a line
-      const safeX = clamp(maxLeft * 0.12, 8, 56);
-      const safeY = clamp(maxTop  * 0.12, 8, 56);
-
-      // Must land far from pointer; scaled to area
-      const minSep = clamp(Math.min(maxLeft, maxTop) * 0.55, 140, 360);
-
-      // Trigger earlier than minSep so you can never “get on top of it”
-      const trigger = clamp(minSep * 1.35, 240, 560);
-
-      return { safeX, safeY, minSep, trigger };
+    // Current NO center in page coords
+    function noRect(){
+      // This returns a real rect even though pointer-events is none
+      return noBtn.getBoundingClientRect();
     }
 
-    function noCenter(){
-      const { a, b } = geom();
-      return {
-        x: (b.left + b.width/2),
-        y: (b.top  + b.height/2),
-        // also return as playArea-local for some checks
-        lx: (b.left - a.left + b.width/2),
-        ly: (b.top  - a.top  + b.height/2)
-      };
+    function tuning(){
+      const a = areaRect();
+      const b = noRect();
+
+      const w = Math.max(1, a.width);
+      const h = Math.max(1, a.height);
+
+      // Safe padding as fraction of area (prevents pinning/cornering)
+      const padX = clamp(w * 0.10, 10, 52);
+      const padY = clamp(h * 0.10, 10, 52);
+
+      // Landing distance from pointer (bigger = more impossible)
+      const minSep = clamp(Math.min(w, h) * 0.62, 160, 420);
+
+      // How early it runs away (rect-inflation trigger)
+      const preempt = clamp(Math.min(w, h) * 0.22, 60, 140);
+
+      // Dash duration (ms): smooth but fast
+      const dashMs = 120;
+
+      return { a, b, padX, padY, minSep, preempt, dashMs };
     }
 
-    function setNo(leftPx, topPx){
-      // store as top-left, but our CSS uses translate(-50,-50) so we set center coords
-      noBtn.style.left = leftPx + "px";
-      noBtn.style.top  = topPx + "px";
+    // Set position in playArea-local coords (center coords)
+    function setNoLocal(cx, cy){
+      noBtn.style.setProperty("--nx", cx + "px");
+      noBtn.style.setProperty("--ny", cy + "px");
     }
 
-    // pick a random SAFE spot in playArea (as center coords)
-    function randomSpot(px, py, forceDeep=false){
-      const { a, b, maxLeft, maxTop } = geom();
-      const { safeX, safeY, minSep } = tuning(maxLeft, maxTop);
+    // Pick random safe center location inside playArea
+    function pickSafeTarget(px, py, forceDeep=false){
+      const { a, b, padX, padY, minSep } = tuning();
 
-      const padX = forceDeep ? clamp(safeX + 26, safeX, a.width/2) : safeX;
-      const padY = forceDeep ? clamp(safeY + 26, safeY, a.height/2) : safeY;
-
-      // since we position by center, we need bounds in center-space
+      // center bounds in local coords (because we place by center)
       const minCX = padX + b.width/2;
       const maxCX = a.width - padX - b.width/2;
       const minCY = padY + b.height/2;
@@ -257,111 +240,143 @@
       const spanX = Math.max(1, maxCX - minCX);
       const spanY = Math.max(1, maxCY - minCY);
 
-      // If area is tiny, just bounce anywhere possible
-      if (spanX < 2 || spanY < 2){
-        return { cx: a.width/2, cy: a.height/2 };
-      }
+      // if space is too small, just center
+      if (spanX < 2 || spanY < 2) return { cx: a.width/2, cy: a.height/2 };
 
-      for(let i=0;i<220;i++){
-        const cx = minCX + Math.random() * spanX;
-        const cy = minCY + Math.random() * spanY;
+      const deepBoost = forceDeep ? 26 : 0;
+      const minCX2 = clamp(minCX + deepBoost, minCX, maxCX);
+      const maxCX2 = clamp(maxCX - deepBoost, minCX2, maxCX);
+      const minCY2 = clamp(minCY + deepBoost, minCY, maxCY);
+      const maxCY2 = clamp(maxCY - deepBoost, minCY2, maxCY);
 
-        // distance in viewport coords
+      const spanX2 = Math.max(1, maxCX2 - minCX2);
+      const spanY2 = Math.max(1, maxCY2 - minCY2);
+
+      for (let i=0; i<260; i++){
+        const cx = minCX2 + Math.random() * spanX2;
+        const cy = minCY2 + Math.random() * spanY2;
+
         const worldX = a.left + cx;
         const worldY = a.top  + cy;
 
         if (Math.hypot(worldX - px, worldY - py) >= minSep) return { cx, cy };
       }
 
-      return { cx: a.width/2, cy: a.height/2 };
+      return { cx: (minCX2+maxCX2)/2, cy: (minCY2+maxCY2)/2 };
     }
 
-    function teleportAwayFrom(px, py, forceDeep=false){
-      const { a, maxLeft, maxTop } = geom();
-      const { safeX, safeY } = tuning(maxLeft, maxTop);
+    // Smooth “dash” to new target (no teleport pop)
+    let animating = false;
+    let lastMoveAt = 0;
 
-      // If the NO center is nearing edges, force deep interior
-      const c = noCenter();
-      const edge = (
-        c.lx < safeX || c.ly < safeY ||
-        c.lx > (a.width - safeX) || c.ly > (a.height - safeY)
+    function dashToTarget(px, py, forceDeep=false){
+      const { dashMs } = tuning();
+
+      // throttle so it doesn't freak out multiple times per single move event
+      const now = performance.now();
+      if (animating && now - lastMoveAt < 25) return;
+
+      const a = areaRect();
+      // current local center from CSS vars if present, else from rect
+      const cur = noRect();
+      const curLocalX = (cur.left + cur.width/2) - a.left;
+      const curLocalY = (cur.top  + cur.height/2) - a.top;
+
+      const tgt = pickSafeTarget(px, py, forceDeep);
+
+      animating = true;
+      lastMoveAt = now;
+
+      // enable transition just for the dash
+      noBtn.style.transition = `transform ${dashMs}ms cubic-bezier(.15,.9,.2,1)`;
+      setNoLocal(tgt.cx, tgt.cy);
+
+      // after dash, keep transition fast for subsequent moves
+      window.setTimeout(() => {
+        animating = false;
+        noBtn.style.transition = "transform 90ms cubic-bezier(.15,.9,.2,1)";
+      }, dashMs + 10);
+    }
+
+    // Trigger based on inflated rect distance (prevents ever getting on it)
+    function shouldEvade(px, py){
+      const { b, preempt } = tuning();
+
+      // Inflate rect by preempt pixels
+      const left   = b.left   - preempt;
+      const right  = b.right  + preempt;
+      const top    = b.top    - preempt;
+      const bottom = b.bottom + preempt;
+
+      // if pointer is inside inflated rectangle => evade immediately
+      return (px >= left && px <= right && py >= top && py <= bottom);
+    }
+
+    // Also evade if near edges (uncornerable)
+    function edgeCornered(){
+      const { a, b, padX, padY } = tuning();
+      const cx = (b.left + b.width/2) - a.left;
+      const cy = (b.top  + b.height/2) - a.top;
+      return (
+        cx < padX || cy < padY ||
+        cx > (a.width - padX) || cy > (a.height - padY)
       );
-
-      const spot = randomSpot(px, py, forceDeep || edge);
-
-      // set as center coords (because button uses translate(-50,-50))
-      setNo(spot.cx, spot.cy);
     }
 
-    // Make it impossible to hover: run BEFORE you get there.
-    // We do this on every pointer move via rAF, and if distance < trigger, we jump immediately.
-    let lastX = window.innerWidth/2, lastY = window.innerHeight/2;
-    let havePointer = false;
+    /* ---------- INITIAL PLACEMENT (fix out-of-place on load) ---------- */
+    function initialPlace(){
+      // Turn transitions OFF for first placement so it doesn't “fly in”
+      noBtn.style.transition = "none";
+
+      // Need layout to be stable (image loaded etc.)
+      const a = areaRect();
+      const px = a.left + a.width/2;
+      const py = a.top  + a.height/2;
+
+      const tgt = pickSafeTarget(px, py, true);
+      setNoLocal(tgt.cx, tgt.cy);
+
+      // Next frame: enable transitions
+      requestAnimationFrame(() => {
+        noBtn.style.transition = "transform 90ms cubic-bezier(.15,.9,.2,1)";
+      });
+    }
+
+    // Run after everything is laid out
+    window.addEventListener("load", initialPlace);
+
+    /* ---------- MAKE IT IMPOSSIBLE TO HOVER ---------- */
     let armed = true;
 
-    // aggressive settings (no cooldown needed; but prevent infinite thrash per frame)
-    function evadeIfNeeded(){
-      if (!armed || !havePointer) return;
+    function onPointerMove(px, py){
+      if (!armed) return;
 
-      const { maxLeft, maxTop } = geom();
-      const { trigger } = tuning(maxLeft, maxTop);
-      const c = noCenter();
-      const d = Math.hypot(c.x - lastX, c.y - lastY);
+      // Evade BEFORE pointer reaches it
+      if (shouldEvade(px, py)) {
+        dashToTarget(px, py, true);
+        return;
+      }
 
-      if (d < trigger){
-        // jump, then ensure it's actually safe (2-3 quick attempts in same frame)
-        teleportAwayFrom(lastX, lastY, true);
-
-        for (let i=0; i<2; i++){
-          const c2 = noCenter();
-          const d2 = Math.hypot(c2.x - lastX, c2.y - lastY);
-          if (d2 >= trigger) break;
-          teleportAwayFrom(lastX, lastY, true);
-        }
+      // If it gets cornered, force a deep interior dash
+      if (edgeCornered()) {
+        dashToTarget(px, py, true);
       }
     }
 
-    function rafLoop(){
-      evadeIfNeeded();
-      requestAnimationFrame(rafLoop);
-    }
-    requestAnimationFrame(rafLoop);
+    // Track globally, not just in the area (so it flees pre-hover)
+    window.addEventListener("pointermove", (e) => onPointerMove(e.clientX, e.clientY), { passive:true });
+    window.addEventListener("pointerdown", (e) => { if(armed) dashToTarget(e.clientX, e.clientY, true); }, { passive:true });
 
-    // Track pointer anywhere (not just inside area) so it flees pre-hover
-    window.addEventListener("pointermove", (e) => {
-      lastX = e.clientX;
-      lastY = e.clientY;
-      havePointer = true;
-    }, { passive:true });
-
-    // On press/touch anywhere, also flee instantly
-    window.addEventListener("pointerdown", (e) => {
-      lastX = e.clientX;
-      lastY = e.clientY;
-      havePointer = true;
-      teleportAwayFrom(lastX, lastY, true);
-    }, { passive:true });
-
-    // Touch fallback (older iOS)
+    // Touch fallback
     window.addEventListener("touchstart", (e) => {
-      if (e.touches && e.touches[0]){
-        lastX = e.touches[0].clientX;
-        lastY = e.touches[0].clientY;
-        havePointer = true;
-        teleportAwayFrom(lastX, lastY, true);
-      }
+      if (!armed) return;
+      const t = e.touches && e.touches[0];
+      if (t) dashToTarget(t.clientX, t.clientY, true);
     }, { passive:true });
 
-    // Initialize NO somewhere random
-    window.addEventListener("load", () => {
-      const { a } = geom();
-      // start centered-ish but away from center pointer
-      teleportAwayFrom(a.left + a.width*0.5, a.top + a.height*0.5, true);
-    });
-
-    /* ---- YES CLICK ---- */
+    /* ---------- YES CLICK ---------- */
     yesBtn.addEventListener("click", () => {
-      armed = false; // stop evasion once accepted
+      armed = false;
       playArea.style.display = "none";
       hint.style.display = "none";
       result.style.display = "block";
