@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Maya, will you be my Valentine?</title>
 
-  <!-- Confetti (optional). If this fails to load, the page still works. -->
+  <!-- Confetti (optional – page still works if blocked) -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
   <style>
-    :root{
-      --bg1:#ffd6e7; --bg2:#ffeef6; --card:#ffffffcc; --yes:#ff3b7a; --yesHover:#ff1f68;
+    :root {
+      --bg1:#ffd6e7; --bg2:#ffeef6; --card:#ffffffcc;
+      --yes:#ff3b7a; --yesHover:#ff1f68;
     }
     *{box-sizing:border-box}
     html,body{height:100%;overscroll-behavior:none}
@@ -37,16 +38,17 @@
       width:min(260px,80vw);
       margin:0 auto 10px;
       display:block;
-      filter:drop-shadow(0 10px 14px rgba(0,0,0,.12));
       border-radius:16px;
+      filter:drop-shadow(0 10px 14px rgba(0,0,0,.12));
     }
 
     h1{font-size:clamp(24px,5vw,44px); margin:12px 0 18px; line-height:1.1;}
 
+    /* TALLER ZONE → allows real 2D teleporting */
     .button-zone{
       position:relative;
       width:min(520px,92%);
-      height:190px; /* a bit taller helps make teleporting feel more random */
+      height:300px;
       margin:0 auto;
       user-select:none;
       -webkit-user-select:none;
@@ -65,7 +67,6 @@
       cursor:pointer;
       box-shadow:0 10px 24px rgba(0,0,0,.14);
       -webkit-tap-highlight-color:transparent;
-      user-select:none;
       white-space:nowrap;
     }
 
@@ -77,7 +78,7 @@
       background:#e5e7eb;
       color:#111827;
       will-change:left, top;
-      transition:left 70ms ease-out, top 70ms ease-out; /* fast + smooth */
+      transition:left 35ms linear, top 35ms linear; /* VERY FAST + SMOOTH */
     }
 
     .hint{margin-top:10px; font-size:13px; opacity:.7;}
@@ -89,7 +90,7 @@
 
     @media (max-width:480px){
       .card{padding:22px 16px; border-radius:18px;}
-      .button-zone{height:220px; width:100%;}
+      .button-zone{height:340px;}
       #yesBtn{left:12%;}
       #noBtn{left:58%;}
     }
@@ -100,7 +101,8 @@
   <canvas id="confettiCanvas"></canvas>
 
   <main class="card">
-    <img class="art" src="puss-in-boots-meme-3.jpg" alt="Puss in Boots pleading eyes" />
+    <img class="art" src="puss-in-boots-meme-3.jpg" alt="Puss in Boots" />
+
     <h1>Maya, will you be my valentine?</h1>
 
     <section class="button-zone" id="zone">
@@ -108,7 +110,7 @@
       <button id="noBtn" type="button">No</button>
     </section>
 
-    <div class="hint" id="hint">I won't take no for an answer :)</div>
+    <div class="hint" id="hint">“No” seems a bit shy :)</div>
 
     <section class="result" id="result">
       <h2>YAY! 🎉</h2>
@@ -117,220 +119,162 @@
   </main>
 
   <script>
-    // Run after DOM is ready (prevents blank page from timing issues)
-    window.addEventListener("DOMContentLoaded", () => {
-      const zone = document.getElementById("zone");
-      const yesBtn = document.getElementById("yesBtn");
-      const noBtn  = document.getElementById("noBtn");
-      const result = document.getElementById("result");
-      const hint   = document.getElementById("hint");
+  window.addEventListener("DOMContentLoaded", () => {
 
-      /* -------- Confetti (safe if CDN blocked) -------- */
-      const confettiCanvas = document.getElementById("confettiCanvas");
+    const zone = document.getElementById("zone");
+    const yesBtn = document.getElementById("yesBtn");
+    const noBtn  = document.getElementById("noBtn");
+    const result = document.getElementById("result");
+    const hint   = document.getElementById("hint");
 
-      function resizeConfettiCanvas() {
-        const dpr = Math.max(1, window.devicePixelRatio || 1);
-        confettiCanvas.width = Math.floor(window.innerWidth * dpr);
-        confettiCanvas.height = Math.floor(window.innerHeight * dpr);
-        confettiCanvas.style.width = "100vw";
-        confettiCanvas.style.height = "100vh";
-      }
-      resizeConfettiCanvas();
-      window.addEventListener("resize", resizeConfettiCanvas);
-      window.addEventListener("orientationchange", () => setTimeout(resizeConfettiCanvas, 200));
+    /* ---- CONFETTI SAFE INIT ---- */
+    const confettiCanvas = document.getElementById("confettiCanvas");
+    const canConfetti = typeof window.confetti === "function";
+    const confettiInstance = canConfetti ? window.confetti.create(confettiCanvas,{resize:false,useWorker:true}) : null;
 
-      const hasConfetti = typeof window.confetti === "function";
-      const confettiInstance = hasConfetti ? window.confetti.create(confettiCanvas, { resize: false, useWorker: true }) : null;
+    function fullScreenConfetti(){
+      if(!confettiInstance) return;
+      const end = Date.now()+1600;
+      (function frame(){
+        confettiInstance({
+          particleCount:12, spread:90, startVelocity:45, ticks:180,
+          origin:{x:Math.random(),y:Math.random()*0.3}
+        });
+        if(Date.now()<end) requestAnimationFrame(frame);
+      })();
+    }
 
-      function fullScreenConfetti() {
-        if (!confettiInstance) return; // if CDN blocked, skip
-        const end = Date.now() + 1600;
+    /* ---- NO BUTTON: TRUE RANDOM 2D TELEPORT ---- */
+    const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 
-        (function frame() {
-          confettiInstance({
-            particleCount: 12,
-            spread: 90,
-            startVelocity: 45,
-            ticks: 180,
-            origin: { x: Math.random(), y: Math.random() * 0.3 }
-          });
-          if (Date.now() < end) requestAnimationFrame(frame);
-        })();
+    function getGeom(){
+      const z=zone.getBoundingClientRect();
+      const b=noBtn.getBoundingClientRect();
+      return{
+        z,b,
+        maxLeft:Math.max(0,z.width-b.width),
+        maxTop:Math.max(0,z.height-b.height),
+        curLeft:b.left-z.left,
+        curTop:b.top-z.top
+      };
+    }
 
-        setTimeout(() => {
-          confettiInstance({
-            particleCount: 300,
-            spread: 140,
-            startVelocity: 60,
-            ticks: 220,
-            origin: { x: 0.5, y: 0.55 }
-          });
-        }, 300);
-      }
+    function tuning(maxLeft,maxTop){
+      return{
+        safeX:clamp(maxLeft*0.16,12,80),
+        safeY:clamp(maxTop*0.16,12,80),
+        minSep:clamp(Math.min(maxLeft,maxTop)*0.6,160,360),
+        trigger:clamp(Math.min(maxLeft,maxTop)*0.75,240,520)
+      };
+    }
 
-      /* -------- NO button: random teleport, uncatchable, uncornerable -------- */
-      let TRIGGER_RADIUS = 280;
-      let MIN_SEPARATION = 250;
-      let SAFE_PADDING   = 70;
-      const EDGE_PADDING = 10;
-      const MAX_TRIES    = 140;
-      const COOLDOWN_MS  = 55; // fast but not jittery
+    function dist(left,top,px,py){
+      const{z,b}=getGeom();
+      const cx=z.left+left+b.width/2;
+      const cy=z.top+top+b.height/2;
+      return Math.hypot(cx-px,cy-py);
+    }
 
-      function updateTuning() {
-        const isMobile = window.matchMedia("(max-width: 768px)").matches;
-        TRIGGER_RADIUS = isMobile ? 340 : 280;
-        MIN_SEPARATION = isMobile ? 280 : 250;
-        SAFE_PADDING   = isMobile ? 78  : 70;
-      }
-      updateTuning();
-      window.addEventListener("resize", updateTuning);
-      window.addEventListener("orientationchange", () => setTimeout(updateTuning, 200));
+    function isEdge(left,top,maxLeft,maxTop,safeX,safeY){
+      return(
+        left<safeX||
+        top<safeY||
+        left>maxLeft-safeX||
+        top>maxTop-safeY
+      );
+    }
 
-      const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+    function setNo(left,top){
+      const{maxLeft,maxTop}=getGeom();
+      noBtn.style.left=clamp(left,0,maxLeft)+"px";
+      noBtn.style.top =clamp(top,0,maxTop)+"px";
+    }
 
-      function getMax() {
-        const z = zone.getBoundingClientRect();
-        const b = noBtn.getBoundingClientRect();
-        return { maxLeft: z.width - b.width, maxTop: z.height - b.height, z, b };
-      }
+    function randomSpot(px,py,force=false){
+      const{maxLeft,maxTop}=getGeom();
+      const{safeX,safeY,minSep}=tuning(maxLeft,maxTop);
 
-      function isNearEdge(left, top, maxLeft, maxTop) {
-        return (
-          left < SAFE_PADDING ||
-          top < SAFE_PADDING ||
-          left > (maxLeft - SAFE_PADDING) ||
-          top > (maxTop - SAFE_PADDING)
-        );
-      }
+      const padX=force?clamp(safeX+40,safeX,maxLeft/2):safeX;
+      const padY=force?clamp(safeY+40,safeY,maxTop/2):safeY;
 
-      function distToPointer(left, top, px, py) {
-        const { z, b } = getMax();
-        const cx = z.left + left + b.width / 2;
-        const cy = z.top  + top  + b.height / 2;
-        return Math.hypot(cx - px, cy - py);
+      const spanX=Math.max(1,maxLeft-2*padX);
+      const spanY=Math.max(1,maxTop-2*padY);
+
+      for(let i=0;i<200;i++){
+        const L=padX+Math.random()*spanX;
+        const T=padY+Math.random()*spanY;
+        if(dist(L,T,px,py)>=minSep) return{left:L,top:T};
       }
 
-      function setNo(left, top) {
-        noBtn.style.left = `${left}px`;
-        noBtn.style.top  = `${top}px`;
-        noBtn.style.transform = "none";
+      return{left:maxLeft/2,top:maxTop/2};
+    }
+
+    function teleport(px,py,force=false){
+      const{maxLeft,maxTop,curLeft,curTop}=getGeom();
+      const{safeX,safeY}=tuning(maxLeft,maxTop);
+
+      const cornered=isEdge(curLeft,curTop,maxLeft,maxTop,safeX,safeY);
+      const spot=randomSpot(px,py,force||cornered);
+      setNo(spot.left,spot.top);
+    }
+
+    /* ---- POINTER TRACKING ---- */
+    let lastX=null,lastY=null,chasing=false,cooldown=0;
+    const COOLDOWN_MS=18; // VERY aggressive
+
+    function upd(e){
+      if(e.touches&&e.touches[0]){
+        lastX=e.touches[0].clientX;
+        lastY=e.touches[0].clientY;
+      }else{
+        lastX=e.clientX; lastY=e.clientY;
       }
+    }
 
-      function randomSafeSpot(px, py) {
-        const { maxLeft, maxTop } = getMax();
+    function tick(){
+      if(chasing&&lastX!=null){
+        const now=performance.now();
+        if(now>=cooldown){
+          const{b,maxLeft,maxTop}=getGeom();
+          const{trigger}=tuning(maxLeft,maxTop);
 
-        const spanX = Math.max(1, maxLeft - 2 * SAFE_PADDING);
-        const spanY = Math.max(1, maxTop  - 2 * SAFE_PADDING);
+          const d=Math.hypot(
+            (b.left+b.width/2)-lastX,
+            (b.top+b.height/2)-lastY
+          );
 
-        for (let i = 0; i < MAX_TRIES; i++) {
-          const left = SAFE_PADDING + Math.random() * spanX;
-          const top  = SAFE_PADDING + Math.random() * spanY;
-          if (distToPointer(left, top, px, py) >= MIN_SEPARATION) return { left, top };
-        }
-
-        return {
-          left: clamp(maxLeft * 0.5, SAFE_PADDING, maxLeft - SAFE_PADDING),
-          top:  clamp(maxTop  * 0.5, SAFE_PADDING, maxTop  - SAFE_PADDING)
-        };
-      }
-
-      function teleportNo(px, py, force=false) {
-        const { maxLeft, maxTop, z, b } = getMax();
-        const curLeft = b.left - z.left;
-        const curTop  = b.top  - z.top;
-
-        // If cornered, force deeper interior hop
-        const oldSafe = SAFE_PADDING;
-        if (force || isNearEdge(curLeft, curTop, maxLeft, maxTop)) {
-          SAFE_PADDING = Math.min(100, oldSafe + 12);
-          const spot = randomSafeSpot(px, py);
-          setNo(spot.left, spot.top);
-          SAFE_PADDING = oldSafe;
-          return;
-        }
-
-        const spot = randomSafeSpot(px, py);
-        setNo(spot.left, spot.top);
-      }
-
-      /* -------- Pointer tracking (continuous) -------- */
-      let lastX=null, lastY=null;
-      let chasing=false;
-      let cooldownUntil=0;
-
-      function updateLast(e) {
-        if (!e) return;
-        if (e.touches && e.touches[0]) {
-          lastX = e.touches[0].clientX;
-          lastY = e.touches[0].clientY;
-        } else {
-          lastX = e.clientX;
-          lastY = e.clientY;
-        }
-      }
-
-      function tick() {
-        if (chasing && lastX!=null && lastY!=null) {
-          const now = performance.now();
-          if (now >= cooldownUntil) {
-            const bb = noBtn.getBoundingClientRect();
-            const d = Math.hypot((bb.left + bb.width/2) - lastX, (bb.top + bb.height/2) - lastY);
-            if (d < TRIGGER_RADIUS) {
-              teleportNo(lastX, lastY);
-              cooldownUntil = now + COOLDOWN_MS;
-            }
+          if(d<trigger){
+            teleport(lastX,lastY);
+            cooldown=now+COOLDOWN_MS;
           }
         }
-
-        // Auto-uncorner if it ever gets too close to edges
-        if (lastX!=null && lastY!=null) {
-          const { maxLeft, maxTop, z, b } = getMax();
-          const curLeft = b.left - z.left;
-          const curTop  = b.top  - z.top;
-          if (isNearEdge(curLeft, curTop, maxLeft, maxTop)) {
-            teleportNo(lastX, lastY, true);
-          }
-        }
-
-        requestAnimationFrame(tick);
       }
       requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
 
-      zone.addEventListener("pointermove", (e) => updateLast(e), { passive:true });
-      zone.addEventListener("pointerdown", (e) => {
-        updateLast(e);
-        chasing = true;
-        teleportNo(lastX, lastY, true); // instant hop on press
-      }, { passive:false });
-      zone.addEventListener("pointerup", () => chasing=false, { passive:true });
-      zone.addEventListener("pointercancel", () => chasing=false, { passive:true });
+    zone.addEventListener("pointermove",upd,{passive:true});
+    zone.addEventListener("pointerdown",(e)=>{upd(e);chasing=true;teleport(lastX,lastY,true);},{passive:false});
+    zone.addEventListener("pointerup",()=>chasing=false,{passive:true});
 
-      zone.addEventListener("touchstart", (e) => {
-        e.preventDefault();
-        updateLast(e);
-        chasing = true;
-        teleportNo(lastX, lastY, true);
-      }, { passive:false });
-      zone.addEventListener("touchmove", (e) => { e.preventDefault(); updateLast(e); }, { passive:false });
-      zone.addEventListener("touchend", () => chasing=false, { passive:true });
-      zone.addEventListener("touchcancel", () => chasing=false, { passive:true });
+    noBtn.addEventListener("pointerenter",(e)=>{upd(e);teleport(e.clientX,e.clientY,true);});
+    noBtn.addEventListener("pointerdown",(e)=>{e.preventDefault();upd(e);teleport(e.clientX,e.clientY,true);},{passive:false});
+    noBtn.addEventListener("click",(e)=>e.preventDefault());
 
-      // Anti-snipe
-      noBtn.addEventListener("pointerenter", (e) => { updateLast(e); teleportNo(e.clientX, e.clientY, true); });
-      noBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); updateLast(e); teleportNo(e.clientX, e.clientY, true); }, { passive:false });
-      noBtn.addEventListener("click", (e) => e.preventDefault());
-
-      /* -------- YES click -------- */
-      yesBtn.addEventListener("click", () => {
-        zone.style.display = "none";
-        hint.style.display = "none";
-        result.style.display = "block";
-        resizeConfettiCanvas();
-        fullScreenConfetti();
-      });
-
-      document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive:false });
+    /* ---- YES CLICK ---- */
+    yesBtn.addEventListener("click",()=>{
+      zone.style.display="none";
+      hint.style.display="none";
+      result.style.display="block";
+      fullScreenConfetti();
     });
+
+    // Initial random placement
+    const spot=randomSpot(window.innerWidth/2,window.innerHeight/2,true);
+    setNo(spot.left,spot.top);
+
+  });
   </script>
+
 </body>
 </html>
