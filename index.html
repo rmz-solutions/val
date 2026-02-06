@@ -5,11 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Maya, will you be my Valentine?</title>
 
-  <!-- Confetti (optional – page still works if blocked) -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
   <style>
-    :root {
+    :root{
       --bg1:#ffd6e7; --bg2:#ffeef6; --card:#ffffffcc;
       --yes:#ff3b7a; --yesHover:#ff1f68;
     }
@@ -22,7 +21,10 @@
       -webkit-text-size-adjust:100%; touch-action:none;
     }
 
-    #confettiCanvas{position:fixed; inset:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;}
+    #confettiCanvas{
+      position:fixed; inset:0; width:100vw; height:100vh;
+      pointer-events:none; z-index:9999;
+    }
 
     .card{
       width:min(720px,92vw);
@@ -32,24 +34,35 @@
       border-radius:22px;
       text-align:center;
       box-shadow:0 18px 60px rgba(0,0,0,.15);
+      display:flex;
+      flex-direction:column;
+      gap:10px;
     }
 
     .art{
       width:min(260px,80vw);
-      margin:0 auto 10px;
+      margin:0 auto 0;
       display:block;
       border-radius:16px;
       filter:drop-shadow(0 10px 14px rgba(0,0,0,.12));
     }
 
-    h1{font-size:clamp(24px,5vw,44px); margin:12px 0 18px; line-height:1.1;}
+    h1{
+      font-size:clamp(24px,5vw,44px);
+      margin:8px 0 0;
+      line-height:1.1;
+    }
 
-    /* TALLER ZONE → allows real 2D teleporting */
-    .button-zone{
+    /* THIS is the white space where NO can roam freely */
+    #playArea{
       position:relative;
-      width:min(520px,92%);
-      height:300px;
+      width:min(560px, 96%);
       margin:0 auto;
+      height:220px;
+      border-radius:18px;
+      /* keep it visually "white space" */
+      background:transparent;
+      /* prevent selecting / gestures */
       user-select:none;
       -webkit-user-select:none;
       touch-action:none;
@@ -57,8 +70,6 @@
 
     button{
       position:absolute;
-      top:50%;
-      transform:translateY(-50%);
       padding:16px 24px;
       font-size:18px;
       font-weight:800;
@@ -68,31 +79,52 @@
       box-shadow:0 10px 24px rgba(0,0,0,.14);
       -webkit-tap-highlight-color:transparent;
       white-space:nowrap;
+      transform:translate(-50%, -50%);
     }
 
-    #yesBtn{left:16%; background:var(--yes); color:#fff;}
+    #yesBtn{
+      left:28%;
+      top:50%;
+      background:var(--yes);
+      color:#fff;
+    }
     #yesBtn:hover{background:var(--yesHover);}
 
     #noBtn{
-      left:60%;
+      left:72%;
+      top:50%;
       background:#e5e7eb;
       color:#111827;
+
+      /* FAST + SMOOTH */
       will-change:left, top;
-      transition:left 35ms linear, top 35ms linear; /* VERY FAST + SMOOTH */
+      transition:left 45ms linear, top 45ms linear;
+
+      /* KEY: mouse can never hover/click it */
+      pointer-events:none;
     }
 
-    .hint{margin-top:10px; font-size:13px; opacity:.7;}
-    .result{display:none; margin-top:18px; animation:pop .35s ease;}
+    .hint{
+      margin-top:2px;
+      font-size:13px;
+      opacity:.7;
+    }
+
+    .result{
+      display:none;
+      margin-top:8px;
+      animation:pop .35s ease;
+    }
     .result h2{font-size:clamp(30px,5vw,46px); margin:10px 0;}
     .fireworks{width:min(380px,90vw); margin:0 auto; display:block; border-radius:14px;}
 
-    @keyframes pop{from{transform:scale(.96); opacity:0} to{transform:scale(1); opacity:1}}
+    @keyframes pop{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
 
     @media (max-width:480px){
       .card{padding:22px 16px; border-radius:18px;}
-      .button-zone{height:340px;}
-      #yesBtn{left:12%;}
-      #noBtn{left:58%;}
+      #playArea{height:280px; width:100%;}
+      #yesBtn{left:26%;}
+      #noBtn{left:74%;}
     }
   </style>
 </head>
@@ -105,12 +137,13 @@
 
     <h1>Maya, will you be my valentine?</h1>
 
-    <section class="button-zone" id="zone">
+    <!-- FREE ROAM AREA (between question and hint) -->
+    <section id="playArea">
       <button id="yesBtn" type="button">Yes</button>
       <button id="noBtn" type="button">No</button>
     </section>
 
-    <div class="hint" id="hint">“No” seems a bit shy :)</div>
+    <div class="hint" id="hint">I won't take no for an answer :)</div>
 
     <section class="result" id="result">
       <h2>YAY! 🎉</h2>
@@ -119,162 +152,224 @@
   </main>
 
   <script>
-  window.addEventListener("DOMContentLoaded", () => {
-
-    const zone = document.getElementById("zone");
+    const playArea = document.getElementById("playArea");
     const yesBtn = document.getElementById("yesBtn");
-    const noBtn  = document.getElementById("noBtn");
+    const noBtn = document.getElementById("noBtn");
     const result = document.getElementById("result");
-    const hint   = document.getElementById("hint");
-
-    /* ---- CONFETTI SAFE INIT ---- */
+    const hint = document.getElementById("hint");
     const confettiCanvas = document.getElementById("confettiCanvas");
+
+    /* ---- Confetti (safe) ---- */
+    function resizeConfettiCanvas(){
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      confettiCanvas.width = Math.floor(window.innerWidth * dpr);
+      confettiCanvas.height = Math.floor(window.innerHeight * dpr);
+      confettiCanvas.style.width = "100vw";
+      confettiCanvas.style.height = "100vh";
+    }
+    resizeConfettiCanvas();
+    window.addEventListener("resize", resizeConfettiCanvas);
+    window.addEventListener("orientationchange", () => setTimeout(resizeConfettiCanvas, 200));
+
     const canConfetti = typeof window.confetti === "function";
-    const confettiInstance = canConfetti ? window.confetti.create(confettiCanvas,{resize:false,useWorker:true}) : null;
+    const confettiInstance = canConfetti ? window.confetti.create(confettiCanvas, { resize:false, useWorker:true }) : null;
 
     function fullScreenConfetti(){
       if(!confettiInstance) return;
-      const end = Date.now()+1600;
+      const end = Date.now() + 1600;
       (function frame(){
         confettiInstance({
-          particleCount:12, spread:90, startVelocity:45, ticks:180,
-          origin:{x:Math.random(),y:Math.random()*0.3}
+          particleCount: 14,
+          spread: 100,
+          startVelocity: 50,
+          ticks: 190,
+          origin: { x: Math.random(), y: Math.random() * 0.35 }
         });
-        if(Date.now()<end) requestAnimationFrame(frame);
+        if(Date.now() < end) requestAnimationFrame(frame);
       })();
+      setTimeout(() => {
+        confettiInstance({
+          particleCount: 260,
+          spread: 140,
+          startVelocity: 60,
+          ticks: 220,
+          origin: { x: 0.5, y: 0.55 }
+        });
+      }, 250);
     }
 
-    /* ---- NO BUTTON: TRUE RANDOM 2D TELEPORT ---- */
-    const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
+    /* ---- NO BUTTON: true 2D teleport anywhere in playArea ---- */
+    const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
-    function getGeom(){
-      const z=zone.getBoundingClientRect();
-      const b=noBtn.getBoundingClientRect();
-      return{
-        z,b,
-        maxLeft:Math.max(0,z.width-b.width),
-        maxTop:Math.max(0,z.height-b.height),
-        curLeft:b.left-z.left,
-        curTop:b.top-z.top
+    function geom(){
+      const a = playArea.getBoundingClientRect();
+      const b = noBtn.getBoundingClientRect();
+      const maxLeft = Math.max(0, a.width - b.width);
+      const maxTop  = Math.max(0, a.height - b.height);
+      return { a, b, maxLeft, maxTop };
+    }
+
+    function tuning(maxLeft, maxTop){
+      // Dynamic so it never collapses to a line
+      const safeX = clamp(maxLeft * 0.12, 8, 56);
+      const safeY = clamp(maxTop  * 0.12, 8, 56);
+
+      // Must land far from pointer; scaled to area
+      const minSep = clamp(Math.min(maxLeft, maxTop) * 0.55, 140, 360);
+
+      // Trigger earlier than minSep so you can never “get on top of it”
+      const trigger = clamp(minSep * 1.35, 240, 560);
+
+      return { safeX, safeY, minSep, trigger };
+    }
+
+    function noCenter(){
+      const { a, b } = geom();
+      return {
+        x: (b.left + b.width/2),
+        y: (b.top  + b.height/2),
+        // also return as playArea-local for some checks
+        lx: (b.left - a.left + b.width/2),
+        ly: (b.top  - a.top  + b.height/2)
       };
     }
 
-    function tuning(maxLeft,maxTop){
-      return{
-        safeX:clamp(maxLeft*0.16,12,80),
-        safeY:clamp(maxTop*0.16,12,80),
-        minSep:clamp(Math.min(maxLeft,maxTop)*0.6,160,360),
-        trigger:clamp(Math.min(maxLeft,maxTop)*0.75,240,520)
-      };
+    function setNo(leftPx, topPx){
+      // store as top-left, but our CSS uses translate(-50,-50) so we set center coords
+      noBtn.style.left = leftPx + "px";
+      noBtn.style.top  = topPx + "px";
     }
 
-    function dist(left,top,px,py){
-      const{z,b}=getGeom();
-      const cx=z.left+left+b.width/2;
-      const cy=z.top+top+b.height/2;
-      return Math.hypot(cx-px,cy-py);
+    // pick a random SAFE spot in playArea (as center coords)
+    function randomSpot(px, py, forceDeep=false){
+      const { a, b, maxLeft, maxTop } = geom();
+      const { safeX, safeY, minSep } = tuning(maxLeft, maxTop);
+
+      const padX = forceDeep ? clamp(safeX + 26, safeX, a.width/2) : safeX;
+      const padY = forceDeep ? clamp(safeY + 26, safeY, a.height/2) : safeY;
+
+      // since we position by center, we need bounds in center-space
+      const minCX = padX + b.width/2;
+      const maxCX = a.width - padX - b.width/2;
+      const minCY = padY + b.height/2;
+      const maxCY = a.height - padY - b.height/2;
+
+      const spanX = Math.max(1, maxCX - minCX);
+      const spanY = Math.max(1, maxCY - minCY);
+
+      // If area is tiny, just bounce anywhere possible
+      if (spanX < 2 || spanY < 2){
+        return { cx: a.width/2, cy: a.height/2 };
+      }
+
+      for(let i=0;i<220;i++){
+        const cx = minCX + Math.random() * spanX;
+        const cy = minCY + Math.random() * spanY;
+
+        // distance in viewport coords
+        const worldX = a.left + cx;
+        const worldY = a.top  + cy;
+
+        if (Math.hypot(worldX - px, worldY - py) >= minSep) return { cx, cy };
+      }
+
+      return { cx: a.width/2, cy: a.height/2 };
     }
 
-    function isEdge(left,top,maxLeft,maxTop,safeX,safeY){
-      return(
-        left<safeX||
-        top<safeY||
-        left>maxLeft-safeX||
-        top>maxTop-safeY
+    function teleportAwayFrom(px, py, forceDeep=false){
+      const { a, maxLeft, maxTop } = geom();
+      const { safeX, safeY } = tuning(maxLeft, maxTop);
+
+      // If the NO center is nearing edges, force deep interior
+      const c = noCenter();
+      const edge = (
+        c.lx < safeX || c.ly < safeY ||
+        c.lx > (a.width - safeX) || c.ly > (a.height - safeY)
       );
+
+      const spot = randomSpot(px, py, forceDeep || edge);
+
+      // set as center coords (because button uses translate(-50,-50))
+      setNo(spot.cx, spot.cy);
     }
 
-    function setNo(left,top){
-      const{maxLeft,maxTop}=getGeom();
-      noBtn.style.left=clamp(left,0,maxLeft)+"px";
-      noBtn.style.top =clamp(top,0,maxTop)+"px";
-    }
+    // Make it impossible to hover: run BEFORE you get there.
+    // We do this on every pointer move via rAF, and if distance < trigger, we jump immediately.
+    let lastX = window.innerWidth/2, lastY = window.innerHeight/2;
+    let havePointer = false;
+    let armed = true;
 
-    function randomSpot(px,py,force=false){
-      const{maxLeft,maxTop}=getGeom();
-      const{safeX,safeY,minSep}=tuning(maxLeft,maxTop);
+    // aggressive settings (no cooldown needed; but prevent infinite thrash per frame)
+    function evadeIfNeeded(){
+      if (!armed || !havePointer) return;
 
-      const padX=force?clamp(safeX+40,safeX,maxLeft/2):safeX;
-      const padY=force?clamp(safeY+40,safeY,maxTop/2):safeY;
+      const { maxLeft, maxTop } = geom();
+      const { trigger } = tuning(maxLeft, maxTop);
+      const c = noCenter();
+      const d = Math.hypot(c.x - lastX, c.y - lastY);
 
-      const spanX=Math.max(1,maxLeft-2*padX);
-      const spanY=Math.max(1,maxTop-2*padY);
+      if (d < trigger){
+        // jump, then ensure it's actually safe (2-3 quick attempts in same frame)
+        teleportAwayFrom(lastX, lastY, true);
 
-      for(let i=0;i<200;i++){
-        const L=padX+Math.random()*spanX;
-        const T=padY+Math.random()*spanY;
-        if(dist(L,T,px,py)>=minSep) return{left:L,top:T};
-      }
-
-      return{left:maxLeft/2,top:maxTop/2};
-    }
-
-    function teleport(px,py,force=false){
-      const{maxLeft,maxTop,curLeft,curTop}=getGeom();
-      const{safeX,safeY}=tuning(maxLeft,maxTop);
-
-      const cornered=isEdge(curLeft,curTop,maxLeft,maxTop,safeX,safeY);
-      const spot=randomSpot(px,py,force||cornered);
-      setNo(spot.left,spot.top);
-    }
-
-    /* ---- POINTER TRACKING ---- */
-    let lastX=null,lastY=null,chasing=false,cooldown=0;
-    const COOLDOWN_MS=18; // VERY aggressive
-
-    function upd(e){
-      if(e.touches&&e.touches[0]){
-        lastX=e.touches[0].clientX;
-        lastY=e.touches[0].clientY;
-      }else{
-        lastX=e.clientX; lastY=e.clientY;
-      }
-    }
-
-    function tick(){
-      if(chasing&&lastX!=null){
-        const now=performance.now();
-        if(now>=cooldown){
-          const{b,maxLeft,maxTop}=getGeom();
-          const{trigger}=tuning(maxLeft,maxTop);
-
-          const d=Math.hypot(
-            (b.left+b.width/2)-lastX,
-            (b.top+b.height/2)-lastY
-          );
-
-          if(d<trigger){
-            teleport(lastX,lastY);
-            cooldown=now+COOLDOWN_MS;
-          }
+        for (let i=0; i<2; i++){
+          const c2 = noCenter();
+          const d2 = Math.hypot(c2.x - lastX, c2.y - lastY);
+          if (d2 >= trigger) break;
+          teleportAwayFrom(lastX, lastY, true);
         }
       }
-      requestAnimationFrame(tick);
     }
-    requestAnimationFrame(tick);
 
-    zone.addEventListener("pointermove",upd,{passive:true});
-    zone.addEventListener("pointerdown",(e)=>{upd(e);chasing=true;teleport(lastX,lastY,true);},{passive:false});
-    zone.addEventListener("pointerup",()=>chasing=false,{passive:true});
+    function rafLoop(){
+      evadeIfNeeded();
+      requestAnimationFrame(rafLoop);
+    }
+    requestAnimationFrame(rafLoop);
 
-    noBtn.addEventListener("pointerenter",(e)=>{upd(e);teleport(e.clientX,e.clientY,true);});
-    noBtn.addEventListener("pointerdown",(e)=>{e.preventDefault();upd(e);teleport(e.clientX,e.clientY,true);},{passive:false});
-    noBtn.addEventListener("click",(e)=>e.preventDefault());
+    // Track pointer anywhere (not just inside area) so it flees pre-hover
+    window.addEventListener("pointermove", (e) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      havePointer = true;
+    }, { passive:true });
+
+    // On press/touch anywhere, also flee instantly
+    window.addEventListener("pointerdown", (e) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      havePointer = true;
+      teleportAwayFrom(lastX, lastY, true);
+    }, { passive:true });
+
+    // Touch fallback (older iOS)
+    window.addEventListener("touchstart", (e) => {
+      if (e.touches && e.touches[0]){
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+        havePointer = true;
+        teleportAwayFrom(lastX, lastY, true);
+      }
+    }, { passive:true });
+
+    // Initialize NO somewhere random
+    window.addEventListener("load", () => {
+      const { a } = geom();
+      // start centered-ish but away from center pointer
+      teleportAwayFrom(a.left + a.width*0.5, a.top + a.height*0.5, true);
+    });
 
     /* ---- YES CLICK ---- */
-    yesBtn.addEventListener("click",()=>{
-      zone.style.display="none";
-      hint.style.display="none";
-      result.style.display="block";
+    yesBtn.addEventListener("click", () => {
+      armed = false; // stop evasion once accepted
+      playArea.style.display = "none";
+      hint.style.display = "none";
+      result.style.display = "block";
+      resizeConfettiCanvas();
       fullScreenConfetti();
     });
 
-    // Initial random placement
-    const spot=randomSpot(window.innerWidth/2,window.innerHeight/2,true);
-    setNo(spot.left,spot.top);
-
-  });
+    document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive:false });
   </script>
-
 </body>
 </html>
