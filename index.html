@@ -13,16 +13,16 @@
       --bg1:#ffd6e7; --bg2:#ffeef6; --card:#ffffffcc;
       --yes:#ff3b7a; --yesHover:#ff1f68;
     }
-    *{box-sizing:border-box}
+    *{ box-sizing:border-box; }
 
-    html,body{height:100%; overscroll-behavior:none; -webkit-text-size-adjust:100%;}
+    html,body{ height:100%; overscroll-behavior:none; -webkit-text-size-adjust:100%; }
     body{
       margin:0; min-height:100svh;
       display:grid; place-items:center;
       background:radial-gradient(circle at top,var(--bg2),var(--bg1));
       font-family:system-ui,sans-serif;
       overflow:hidden; padding:16px;
-      touch-action:none; /* stop scroll/zoom while chasing */
+      touch-action:none;
     }
 
     #confettiCanvas{
@@ -42,7 +42,6 @@
       box-shadow:0 18px 60px rgba(0,0,0,.15);
     }
 
-    /* Puss image */
     .art{
       width:min(260px,80vw);
       height:auto;
@@ -60,8 +59,8 @@
 
     .button-zone{
       position:relative;
-      width:min(520px,92%);
-      height:170px;
+      width:min(560px,92%);
+      height:210px;              /* more vertical room so it doesn't feel side-to-side */
       margin:0 auto;
       user-select:none;
       -webkit-user-select:none;
@@ -70,8 +69,6 @@
 
     button{
       position:absolute;
-      top:50%;
-      transform:translateY(-50%);
       padding:16px 24px;
       font-size:18px;
       font-weight:800;
@@ -81,22 +78,29 @@
       box-shadow:0 10px 24px rgba(0,0,0,.14);
       user-select:none;
       -webkit-tap-highlight-color:transparent;
-      transition:transform .12s ease, background .12s ease;
       touch-action:manipulation;
     }
 
+    /* YES stays fixed and does NOT grow */
     #yesBtn{
       left:18%;
+      top:50%;
+      transform:translate(-50%,-50%);
       background:var(--yes);
       color:#fff;
+      transition: background .12s ease;
     }
     #yesBtn:hover{ background:var(--yesHover); }
 
+    /* NO is controlled by JS using pixel positions (left/top) */
     #noBtn{
       left:62%;
+      top:50%;
+      transform:translate(-50%,-50%);
       background:#e5e7eb;
       color:#111827;
-      transition:left .08s linear, top .08s linear, transform .12s ease;
+      transition:left .06s linear, top .06s linear; /* snappier */
+      will-change:left, top;
     }
 
     .hint{ margin-top:10px; font-size:13px; opacity:.7; }
@@ -117,16 +121,16 @@
     }
 
     @keyframes pop{
-      from{transform:scale(.96); opacity:0;}
-      to{transform:scale(1); opacity:1;}
+      from{ transform:scale(.96); opacity:0; }
+      to{ transform:scale(1); opacity:1; }
     }
 
     @media (max-width:480px){
       .card{ padding:22px 16px; border-radius:18px; }
-      .button-zone{ height:230px; width:100%; }
+      .button-zone{ height:280px; width:100%; }
       button{ font-size:20px; padding:18px 26px; }
-      #yesBtn{ left:10%; }
-      #noBtn{ left:55%; }
+      #yesBtn{ left:26%; }  /* more spacing on mobile */
+      #noBtn{ left:74%; }
     }
   </style>
 </head>
@@ -202,53 +206,50 @@
       }, 300);
     }
 
-    /* ---------- YES GROWS ---------- */
-    let yesScale = 1;
-    function growYes(){
-      yesScale = Math.min(2.2, yesScale + 0.1);
-      yesBtn.style.transform = `translateY(-50%) scale(${yesScale})`;
-    }
-
-    /* ---------- NO RUNS AWAY: DESKTOP (CURSOR) + MOBILE (FINGER) ---------- */
-    const mqFine   = window.matchMedia("(pointer: fine)");
+    /* ---------- NO RUNS AWAY (HARDER TO CATCH, NOT SIDE-TO-SIDE) ---------- */
+    const mqFine = window.matchMedia("(pointer: fine)");
     const mqCoarse = window.matchMedia("(pointer: coarse)");
 
     function isTouchLike(){
-      // “coarse” pointer is most phones/tablets; also covers some browsers that don’t report it well
       return mqCoarse.matches || ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
     }
 
     function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 
-    // These are tuned per input type
-    let TRIGGER_RADIUS = 220;
-    let MIN_SEPARATION = 200;
-
-    // Edge / anti-corner tuning
-    const EDGE_PADDING = 14;
-    const SAFE_PADDING = 56; // interior-only band (prevents pinning/cornering)
-    const MAX_TRIES = 26;
+    // tuned to be harder to catch
+    let TRIGGER_RADIUS = 240;     // starts fleeing sooner
+    let MIN_SEPARATION = 220;     // must land farther away
+    let SAFE_PADDING = 64;        // keep it away from edges so it can't be cornered
+    const EDGE_PADDING = 10;
+    const MAX_TRIES = 40;
 
     function retune(){
       const touch = isTouchLike();
-      TRIGGER_RADIUS = touch ? 320 : 220;  // finger has no hover, so use bigger radius
-      MIN_SEPARATION = touch ? 260 : 200;
+      TRIGGER_RADIUS = touch ? 360 : 260;
+      MIN_SEPARATION = touch ? 300 : 240;
+      SAFE_PADDING   = touch ? 78  : 64;
     }
     retune();
-    mqFine.addEventListener?.("change", retune);
-    mqCoarse.addEventListener?.("change", retune);
     window.addEventListener("resize", retune);
     window.addEventListener("orientationchange", () => setTimeout(retune, 200));
 
-    function setNoPosition(left, top){
+    // Convert NO to pixel positioning immediately so vertical moves work reliably
+    function ensureNoIsPxPositioned(){
+      const z = zone.getBoundingClientRect();
+      const b = noBtn.getBoundingClientRect();
+      const left = (b.left - z.left);
+      const top  = (b.top  - z.top);
       noBtn.style.left = left + "px";
       noBtn.style.top  = top  + "px";
-      noBtn.style.transform = "none";
+      noBtn.style.transform = "none"; // IMPORTANT: stop translate(-50%,-50%) so top changes actually move it
     }
+
+    // Call once after layout
+    requestAnimationFrame(ensureNoIsPxPositioned);
 
     function distanceToPoint(left, top, px, py){
       const z = zone.getBoundingClientRect();
-      const b = noBtn.getBoundingClientRect();
+      const b = noBtn.getBoundingClientRect(); // width/height
       const cx = z.left + left + b.width / 2;
       const cy = z.top  + top  + b.height / 2;
       return Math.hypot(cx - px, cy - py);
@@ -263,11 +264,17 @@
       );
     }
 
+    function setNo(left, top){
+      noBtn.style.left = left + "px";
+      noBtn.style.top  = top  + "px";
+      noBtn.style.transform = "none";
+    }
+
     function randomSafeSpot(maxLeft, maxTop, px, py){
       const spanX = Math.max(1, maxLeft - 2 * SAFE_PADDING);
       const spanY = Math.max(1, maxTop  - 2 * SAFE_PADDING);
 
-      for (let i = 0; i < 70; i++){
+      for (let i = 0; i < 90; i++){
         const left = SAFE_PADDING + Math.random() * spanX;
         const top  = SAFE_PADDING + Math.random() * spanY;
         if (distanceToPoint(left, top, px, py) >= MIN_SEPARATION) return { left, top };
@@ -275,10 +282,10 @@
       return { left: maxLeft * 0.5, top: maxTop * 0.5 };
     }
 
-    // WRAP: mirror to opposite side (plus jitter), then enforce safe interior rules
+    // Wrap to opposite quadrant to break “corner trapping”
     function wrapOpposite(curLeft, curTop, maxLeft, maxTop, px, py){
-      const jitterX = (Math.random() * 2 - 1) * Math.min(110, maxLeft * 0.30);
-      const jitterY = (Math.random() * 2 - 1) * Math.min(85,  maxTop  * 0.45);
+      const jitterX = (Math.random() * 2 - 1) * Math.min(140, maxLeft * 0.35);
+      const jitterY = (Math.random() * 2 - 1) * Math.min(120, maxTop  * 0.45);
 
       let left = (maxLeft - curLeft) + jitterX;
       let top  = (maxTop  - curTop)  + jitterY;
@@ -299,56 +306,57 @@
       const maxLeft = z.width - b.width;
       const maxTop  = z.height - b.height;
 
-      const curLeft = b.left - z.left;
-      const curTop  = b.top  - z.top;
+      // current left/top in px (relative to zone)
+      const curLeft = parseFloat(noBtn.style.left) || (b.left - z.left);
+      const curTop  = parseFloat(noBtn.style.top)  || (b.top  - z.top);
 
-      // If getting cornered OR forced wrap, wrap/teleport immediately.
+      // If it’s getting close to edges (cornerable), wrap/teleport
       if (forceWrap || isNearEdge(curLeft, curTop, maxLeft, maxTop)){
         const spot = wrapOpposite(curLeft, curTop, maxLeft, maxTop, px, py);
-        setNoPosition(spot.left, spot.top);
-        growYes();
+        setNo(spot.left, spot.top);
         return;
       }
 
-      // Otherwise: run away directionally, but ONLY accept interior placements.
+      // Compute direction AWAY from the pointer, then choose a new spot with random angle offset
+      const btnCx = b.left + b.width / 2;
+      const btnCy = b.top  + b.height / 2;
+
+      let dx = btnCx - px;
+      let dy = btnCy - py;
+      const mag = Math.hypot(dx, dy) || 1;
+      dx /= mag; dy /= mag;
+
       const touch = isTouchLike();
-      const baseDist = touch ? 320 : 240;
-      const randDist = touch ? 260 : 180;
+      const baseDist = touch ? 360 : 300; // go farther so it can't be clicked
+      const randDist = touch ? 260 : 220;
 
       for (let i = 0; i < MAX_TRIES; i++){
-        const btnCx = b.left + b.width / 2;
-        const btnCy = b.top  + b.height / 2;
-
-        let dx = btnCx - px;
-        let dy = btnCy - py;
-        const mag = Math.hypot(dx, dy) || 1;
-        dx /= mag; dy /= mag;
-
-        const jitter = (Math.random() * 190 - 95) * (Math.PI / 180);
+        // random rotate by ±110° (big variety; prevents “only side-to-side” feel)
+        const jitter = (Math.random() * 220 - 110) * (Math.PI / 180);
         const cos = Math.cos(jitter), sin = Math.sin(jitter);
         const jx = dx * cos - dy * sin;
         const jy = dx * sin + dy * cos;
 
-        const dist = baseDist + Math.random() * randDist + i * 10;
+        const dist = baseDist + Math.random() * randDist + i * 6;
 
-        let newLeft = curLeft + jx * dist;
-        let newTop  = curTop  + jy * dist;
+        let left = curLeft + jx * dist;
+        let top  = curTop  + jy * dist;
 
-        newLeft = clamp(newLeft, EDGE_PADDING, maxLeft - EDGE_PADDING);
-        newTop  = clamp(newTop,  EDGE_PADDING, maxTop  - EDGE_PADDING);
+        // clamp inside zone
+        left = clamp(left, EDGE_PADDING, maxLeft - EDGE_PADDING);
+        top  = clamp(top,  EDGE_PADDING, maxTop  - EDGE_PADDING);
 
-        if (isNearEdge(newLeft, newTop, maxLeft, maxTop)) continue;
-        if (distanceToPoint(newLeft, newTop, px, py) < MIN_SEPARATION) continue;
+        // reject placements near edges OR too close to pointer
+        if (isNearEdge(left, top, maxLeft, maxTop)) continue;
+        if (distanceToPoint(left, top, px, py) < MIN_SEPARATION) continue;
 
-        setNoPosition(newLeft, newTop);
-        growYes();
+        setNo(left, top);
         return;
       }
 
-      // Fallback: safe interior teleport
+      // fallback
       const spot = randomSafeSpot(maxLeft, maxTop, px, py);
-      setNoPosition(spot.left, spot.top);
-      growYes();
+      setNo(spot.left, spot.top);
     }
 
     function getPoint(e){
@@ -357,44 +365,51 @@
       return { x: e.clientX, y: e.clientY };
     }
 
-    // DESKTOP: run away based on cursor proximity (this is what you asked for)
+    /* ----- DESKTOP: move based on cursor proximity ----- */
     zone.addEventListener("pointermove", (e) => {
-      if (!mqFine.matches) return; // only do cursor-chase on fine pointer devices
-      const { x, y } = getPoint(e);
-      const b = noBtn.getBoundingClientRect();
-      const d = Math.hypot((b.left + b.width/2) - x, (b.top + b.height/2) - y);
-      if (d < TRIGGER_RADIUS) moveNoSmart(x, y, false);
-    }, { passive: true });
+      if (!mqFine.matches) return;   // only do hover/cursor chasing on “fine pointer” devices
+      ensureNoIsPxPositioned();
 
-    // DESKTOP: prevent fast “snipes”
+      const { x, y } = getPoint(e);
+      const bb = noBtn.getBoundingClientRect();
+      const d = Math.hypot((bb.left + bb.width/2) - x, (bb.top + bb.height/2) - y);
+
+      if (d < TRIGGER_RADIUS) moveNoSmart(x, y, false);
+    }, { passive:true });
+
+    // Prevent fast “snipes” on desktop
     noBtn.addEventListener("pointerenter", (e) => {
       if (!mqFine.matches) return;
+      ensureNoIsPxPositioned();
       const { x, y } = getPoint(e);
       moveNoSmart(x, y, true); // force wrap
-    }, { passive: true });
+    }, { passive:true });
 
-    // MOBILE: no cursor—react to finger touches/moves in the zone
+    /* ----- MOBILE: move based on finger (touch) ----- */
     zone.addEventListener("touchstart", (e) => {
       e.preventDefault();
+      ensureNoIsPxPositioned();
       const { x, y } = getPoint(e);
-      moveNoSmart(x, y, true); // immediate wrap on touch
-    }, { passive: false });
+      moveNoSmart(x, y, true); // immediate escape on first touch
+    }, { passive:false });
 
     zone.addEventListener("touchmove", (e) => {
       e.preventDefault();
+      ensureNoIsPxPositioned();
       const { x, y } = getPoint(e);
-      // keep fleeing as finger moves nearby
-      const b = noBtn.getBoundingClientRect();
-      const d = Math.hypot((b.left + b.width/2) - x, (b.top + b.height/2) - y);
+      // keep fleeing as finger gets close
+      const bb = noBtn.getBoundingClientRect();
+      const d = Math.hypot((bb.left + bb.width/2) - x, (bb.top + bb.height/2) - y);
       if (d < TRIGGER_RADIUS) moveNoSmart(x, y, false);
-    }, { passive: false });
+    }, { passive:false });
 
-    // If someone tries to press the "No" button directly (mobile/desktop), wrap instantly
+    // If they try to press NO directly (mobile/desktop), wrap instantly
     noBtn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      ensureNoIsPxPositioned();
       const { x, y } = getPoint(e);
       moveNoSmart(x, y, true);
-    }, { passive: false });
+    }, { passive:false });
 
     noBtn.addEventListener("click", (e) => e.preventDefault());
 
@@ -407,8 +422,7 @@
       fullScreenConfetti();
     });
 
-    // iOS gesture safety (optional)
-    document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+    document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive:false });
   </script>
 </body>
 </html>
